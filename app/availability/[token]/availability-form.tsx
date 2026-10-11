@@ -34,10 +34,15 @@ function formatDay(date: string) {
     month: "short",
     day: "numeric",
     timeZone: "UTC",
-  }).format(new Date(`${date}T12:00:00Z`));
+  }).format(
+    new Date(`${date}T12:00:00Z`)
+  );
 }
 
-function dateRange(start: string, end: string) {
+function dateRange(
+  start: string,
+  end: string
+) {
   const result: string[] = [];
 
   const current = new Date(
@@ -108,26 +113,10 @@ function to12HourLabel(
   ).padStart(2, "0")} ${suffix}`;
 }
 
-/*
- * Operational day:
- *
- * 6:00 AM
- * ↓
- * 11:30 PM
- * ↓
- * 12:00 AM
- * ↓
- * 3:00 AM
- *
- * So Monday availability means:
- * Monday 6:00 AM → Tuesday 3:00 AM.
- */
 function buildTimeOptions(): TimeOption[] {
   const result: TimeOption[] = [];
 
-  /*
-   * 6:00 AM → 11:30 PM
-   */
+  // 6:00 AM → 11:30 PM
   for (
     let minutes = 6 * 60;
     minutes <= 23 * 60 + 30;
@@ -139,17 +128,15 @@ function buildTimeOptions(): TimeOption[] {
     const mins =
       minutes % 60;
 
-    const value =
-      `${String(hours).padStart(
+    result.push({
+      value: `${String(hours).padStart(
         2,
         "0"
       )}:${String(mins).padStart(
         2,
         "0"
-      )}`;
+      )}`,
 
-    result.push({
-      value,
       label: to12HourLabel(
         hours,
         mins
@@ -157,9 +144,7 @@ function buildTimeOptions(): TimeOption[] {
     });
   }
 
-  /*
-   * Midnight → 3:00 AM
-   */
+  // 12:00 AM → 3:00 AM
   for (
     let minutes = 0;
     minutes <= 3 * 60;
@@ -171,17 +156,15 @@ function buildTimeOptions(): TimeOption[] {
     const mins =
       minutes % 60;
 
-    const value =
-      `${String(hours).padStart(
+    result.push({
+      value: `${String(hours).padStart(
         2,
         "0"
       )}:${String(mins).padStart(
         2,
         "0"
-      )}`;
+      )}`,
 
-    result.push({
-      value,
       label: to12HourLabel(
         hours,
         mins
@@ -201,16 +184,7 @@ function operationalPosition(
   const minutes =
     timeToMinutes(time);
 
-  /*
-   * 6 AM → midnight keeps normal value.
-   *
-   * Midnight → 3 AM is treated as
-   * "next-day" time by adding 24 hours.
-   */
-  if (
-    minutes <
-    6 * 60
-  ) {
+  if (minutes < 6 * 60) {
     return (
       minutes +
       24 * 60
@@ -256,8 +230,10 @@ export default function AvailabilityForm({
   people: Person[];
   group: Group;
 }) {
-  const [personId, setPersonId] =
-    useState("");
+  const [
+    personId,
+    setPersonId,
+  ] = useState("");
 
   const [
     confirmedPerson,
@@ -267,13 +243,22 @@ export default function AvailabilityForm({
       null
     );
 
-  const [windows, setWindows] =
-    useState<
-      AvailabilityWindow[]
-    >([]);
+  const [
+    windows,
+    setWindows,
+  ] = useState<
+    AvailabilityWindow[]
+  >([]);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [
+    notes,
+    setNotes,
+  ] = useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
 
   const [
     loadingExisting,
@@ -281,14 +266,15 @@ export default function AvailabilityForm({
   ] =
     useState(false);
 
-  const [success, setSuccess] =
-    useState(false);
+  const [
+    success,
+    setSuccess,
+  ] = useState(false);
 
   const [
     errorMessage,
     setErrorMessage,
-  ] =
-    useState("");
+  ] = useState("");
 
   const groupLabel =
     group === "girls"
@@ -323,34 +309,65 @@ export default function AvailabilityForm({
     setLoadingExisting(true);
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from(
-          "availability_blocks"
-        )
-        .select(`
-          start_at,
-          end_at,
-          type
-        `)
-        .eq(
-          "week_id",
-          week.id
-        )
-        .eq(
-          "person_id",
-          person.id
-        )
-        .order("start_at");
+      const [
+        blocksResult,
+        submissionResult,
+      ] =
+        await Promise.all([
+          supabase
+            .from(
+              "availability_blocks"
+            )
+            .select(`
+              start_at,
+              end_at,
+              type
+            `)
+            .eq(
+              "week_id",
+              week.id
+            )
+            .eq(
+              "person_id",
+              person.id
+            )
+            .order("start_at"),
 
-      if (error) {
-        throw error;
+          supabase
+            .from(
+              "availability_submissions"
+            )
+            .select(`
+              notes
+            `)
+            .eq(
+              "week_id",
+              week.id
+            )
+            .eq(
+              "person_id",
+              person.id
+            )
+            .maybeSingle(),
+        ]);
+
+      if (
+        blocksResult.error
+      ) {
+        throw blocksResult.error;
+      }
+
+      if (
+        submissionResult.error
+      ) {
+        throw submissionResult.error;
       }
 
       const existingWindows =
-        (data ?? []).map(
+        (
+          blocksResult.data ??
+          []
+        ).map(
           (block) => {
             const startDate =
               utcDateString(
@@ -372,19 +389,19 @@ export default function AvailabilityForm({
                 block.end_at
               );
 
-            const expectedNextDate =
-              nextDate(
-                startDate
-              );
-
             const allDay =
-              start === "06:00" &&
-              end === "03:00" &&
+              start ===
+                "06:00" &&
+              end ===
+                "03:00" &&
               endDate ===
-                expectedNextDate;
+                nextDate(
+                  startDate
+                );
 
             return {
-              date: startDate,
+              date:
+                startDate,
               start,
               end,
               allDay,
@@ -394,6 +411,12 @@ export default function AvailabilityForm({
 
       setWindows(
         existingWindows
+      );
+
+      setNotes(
+        submissionResult
+          .data?.notes ??
+          ""
       );
 
       setConfirmedPerson(
@@ -420,9 +443,12 @@ export default function AvailabilityForm({
         ...current,
         {
           date,
-          start: "09:00",
-          end: "18:00",
-          allDay: false,
+          start:
+            "09:00",
+          end:
+            "18:00",
+          allDay:
+            false,
         },
       ]
     );
@@ -490,11 +516,9 @@ export default function AvailabilityForm({
       if (
         end <= start
       ) {
-        return (
-          `${formatDay(
-            window.date
-          )}: the end time must be after the start time within the 6:00 AM–3:00 AM scheduling day.`
-        );
+        return `${formatDay(
+          window.date
+        )}: the end time must be after the start time.`;
       }
     }
 
@@ -525,10 +549,6 @@ export default function AvailabilityForm({
     setErrorMessage("");
 
     try {
-      /*
-       * Replace previous availability
-       * for this person and week.
-       */
       const {
         error:
           deleteError,
@@ -633,10 +653,6 @@ export default function AvailabilityForm({
         }
       }
 
-      /*
-       * Record submission even if
-       * fully available.
-       */
       const {
         error:
           submissionError,
@@ -651,6 +667,10 @@ export default function AvailabilityForm({
 
             person_id:
               confirmedPerson.id,
+
+            notes:
+              notes.trim() ||
+              null,
 
             submitted_at:
               new Date().toISOString(),
@@ -702,14 +722,8 @@ export default function AvailabilityForm({
 
           <p className="mt-3 text-sm leading-6 text-neutral-400">
             Your unavailable
-            times have been
-            saved.
-          </p>
-
-          <p className="mt-2 text-xs text-neutral-500">
-            Any time you did
-            not mark as unavailable
-            is considered available.
+            times and preferences
+            have been saved.
           </p>
 
           <button
@@ -726,7 +740,9 @@ export default function AvailabilityForm({
     );
   }
 
-  if (!confirmedPerson) {
+  if (
+    !confirmedPerson
+  ) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black px-5 py-8">
         <div className="w-full max-w-lg rounded-3xl border border-yellow-500/20 bg-[#0D0D0D] p-7">
@@ -748,11 +764,10 @@ export default function AvailabilityForm({
 
           <div className="mt-6 rounded-xl border border-yellow-500/15 bg-yellow-500/[0.04] p-4">
             <p className="text-sm font-medium text-yellow-300">
-              Each scheduling day runs from 6:00 AM until 3:00 AM the following morning.
-            </p>
-
-            <p className="mt-2 text-xs leading-5 text-neutral-400">
-              For example, Monday includes Monday evening and the Monday night show ending at 3:00 AM on Tuesday.
+              Each scheduling day
+              runs from 6:00 AM
+              until 3:00 AM the
+              following morning.
             </p>
           </div>
 
@@ -769,7 +784,8 @@ export default function AvailabilityForm({
                 event
               ) =>
                 setPersonId(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white"
@@ -829,7 +845,8 @@ export default function AvailabilityForm({
     <main className="min-h-screen bg-black px-4 py-7 text-white">
       <div className="mx-auto max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-400">
-          {groupLabel} Weekly Availability
+          {groupLabel} Weekly
+          Availability
         </p>
 
         <h1 className="mt-3 text-3xl font-semibold">
@@ -840,13 +857,18 @@ export default function AvailabilityForm({
         </h1>
 
         <p className="mt-2 text-sm leading-6 text-neutral-400">
-          Add only the times when you cannot work.
-          Any time you leave blank is treated as available.
+          Add only the times
+          when you cannot work.
+          Any time you leave
+          blank is treated as
+          available.
         </p>
 
         <div className="mt-4 rounded-xl border border-yellow-500/15 bg-yellow-500/[0.04] p-4">
           <p className="text-sm text-yellow-300">
-            Each day: 6:00 AM → 3:00 AM next morning
+            Each day: 6:00 AM
+            → 3:00 AM next
+            morning
           </p>
         </div>
 
@@ -857,9 +879,17 @@ export default function AvailabilityForm({
               null
             );
 
-            setPersonId("");
+            setPersonId(
+              ""
+            );
 
-            setWindows([]);
+            setWindows(
+              []
+            );
+
+            setNotes(
+              ""
+            );
           }}
           className="mt-4 text-xs text-neutral-400 hover:text-yellow-300"
         >
@@ -904,7 +934,8 @@ export default function AvailabilityForm({
                       </h2>
 
                       <p className="mt-1 text-xs text-neutral-500">
-                        6:00 AM → 3:00 AM
+                        6:00 AM →
+                        3:00 AM
                       </p>
                     </div>
 
@@ -960,7 +991,8 @@ export default function AvailabilityForm({
                                   }
                                 />
 
-                                Unavailable entire day
+                                Unavailable
+                                entire day
                               </label>
 
                               <button
@@ -1079,6 +1111,52 @@ export default function AvailabilityForm({
             }
           )}
         </div>
+
+        {/* NOTES */}
+        <section className="mt-6 rounded-2xl border border-yellow-500/15 bg-[#0D0D0D] p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-400">
+            Optional
+          </p>
+
+          <h2 className="mt-2 text-lg font-semibold">
+            Notes or preferences
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-neutral-400">
+            Add any preferences
+            that could help with
+            scheduling.
+          </p>
+
+          <p className="mt-2 text-xs leading-5 text-neutral-500">
+            Examples: “No more
+            than 3 shifts at
+            6:00 AM”, “Prefer
+            afternoons”, or
+            “Avoid Friday night
+            if possible.”
+          </p>
+
+          <textarea
+            value={notes}
+            onChange={(
+              event
+            ) =>
+              setNotes(
+                event.target.value
+              )
+            }
+            rows={5}
+            maxLength={1000}
+            placeholder="Write any notes or preferences here..."
+            className="mt-4 w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-base text-white outline-none placeholder:text-neutral-600 focus:border-yellow-400/50"
+          />
+
+          <div className="mt-2 text-right text-xs text-neutral-600">
+            {notes.length} /
+            1000
+          </div>
+        </section>
 
         {errorMessage && (
           <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
