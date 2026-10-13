@@ -564,6 +564,12 @@ export default function AvailabilityForm({
   ] =
     useState(false);
 
+  const [
+    notes,
+    setNotes,
+  ] =
+    useState("");
+
   const days =
     useMemo(
       () =>
@@ -600,6 +606,7 @@ export default function AvailabilityForm({
       new Set()
     );
     setRulesError("");
+    setNotes("");
     setLoadingRules(true);
 
     try {
@@ -607,6 +614,7 @@ export default function AvailabilityForm({
         recurringResult,
         shabbatResult,
         overridesResult,
+        existingSubmissionResult,
       ] =
         await Promise.all([
           supabase
@@ -672,6 +680,23 @@ export default function AvailabilityForm({
               "person_id",
               person.id
             ),
+
+          supabase
+            .from(
+              "availability_submissions"
+            )
+            .select(`
+              notes
+            `)
+            .eq(
+              "week_id",
+              week.id
+            )
+            .eq(
+              "person_id",
+              person.id
+            )
+            .maybeSingle(),
         ]);
 
       if (
@@ -691,6 +716,17 @@ export default function AvailabilityForm({
       ) {
         throw overridesResult.error;
       }
+
+      if (
+        existingSubmissionResult.error
+      ) {
+        throw existingSubmissionResult.error;
+      }
+
+      setNotes(
+        existingSubmissionResult.data?.notes ??
+          ""
+      );
 
       const recurringRules =
         (
@@ -1122,6 +1158,10 @@ export default function AvailabilityForm({
               updated_at:
                 new Date()
                   .toISOString(),
+
+              notes:
+                notes.trim() ||
+                null,
             },
             {
               onConflict:
@@ -1191,12 +1231,12 @@ export default function AvailabilityForm({
   ) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6">
-        <div className="luxury-card w-full max-w-lg p-8">
-          <p className="kicker">
+        <div className="w-full max-w-lg rounded-3xl border border-[#E7C766]/30 bg-[#080808] p-8 shadow-2xl shadow-black/30">
+          <div className="mb-6 inline-flex rounded-full border border-[#E7C766]/30 bg-[#E7C766]/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E7C766]">
             Invicta Whatnot
-          </p>
+          </div>
 
-          <h1 className="mt-3 text-3xl font-semibold">
+          <h1 className="text-3xl font-semibold tracking-tight text-white">
             Weekly Availability
           </h1>
 
@@ -1273,24 +1313,21 @@ export default function AvailabilityForm({
   return (
     <main className="min-h-screen px-5 py-8">
       <div className="mx-auto max-w-3xl">
-        <div>
-          <p className="kicker">
+        <div className="rounded-3xl border border-[#E7C766]/25 bg-gradient-to-br from-[#111111] to-[#080808] p-6 md:p-7">
+          <div className="inline-flex rounded-full border border-[#E7C766]/25 bg-[#E7C766]/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E7C766]">
             Weekly Availability
-          </p>
+          </div>
 
-          <h1 className="mt-2 text-3xl font-semibold">
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">
             Hi,{" "}
             {
               confirmedPerson.name
             }
           </h1>
 
-          <p className="muted mt-2">
-            Your recurring unavailable
-            times are already shown
-            below. Add only any extra
-            times when you cannot work
-            this week.
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#B7B0A0]">
+            Your recurring unavailable times are already blocked for you.
+            Add only anything extra that is different for this week.
           </p>
         </div>
 
@@ -1594,6 +1631,42 @@ export default function AvailabilityForm({
           )}
         </div>
 
+        <section className="mt-8 rounded-3xl border border-[#E7C766]/30 bg-[#E7C766]/[0.055] p-5 md:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E7C766] text-sm font-bold text-black">
+              AI
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-white">
+                Weekly notes for the scheduler
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-[#B7B0A0]">
+                Optional. Add preferences or exceptions in your own words.
+                The scheduling AI will interpret this together with your
+                unavailable times.
+              </p>
+            </div>
+          </div>
+
+          <textarea
+            value={notes}
+            onChange={(event) =>
+              setNotes(
+                event.target.value
+              )
+            }
+            rows={4}
+            placeholder="Example: I can work Friday night this week, but please avoid 6 AM shifts if possible."
+            className="mt-4 w-full resize-none rounded-2xl border border-[#E7C766]/25 bg-black px-4 py-3 text-sm text-white outline-none placeholder:text-[#6F6A60] focus:border-[#E7C766]/70"
+          />
+
+          <p className="mt-2 text-[11px] text-[#8F897C]">
+            You can leave this blank if there is nothing else to add.
+          </p>
+        </section>
+
         <button
           onClick={
             submitAvailability
@@ -1605,7 +1678,7 @@ export default function AvailabilityForm({
               rulesError
             )
           }
-          className="gold-button mt-6 w-full rounded-xl px-6 py-4 text-sm disabled:opacity-40"
+          className="mt-6 w-full rounded-2xl bg-[#E7C766] px-6 py-4 text-sm font-semibold text-black transition hover:bg-[#F2D875] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loading
             ? "Saving..."
