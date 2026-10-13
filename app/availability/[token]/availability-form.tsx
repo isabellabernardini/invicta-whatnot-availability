@@ -189,6 +189,76 @@ function operationalEnd(
   )}T03:00:00`;
 }
 
+const OPERATIONAL_TIME_OPTIONS = [
+  "06:00",
+  "06:30",
+  "07:00",
+  "07:30",
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "12:00",
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+  "17:00",
+  "17:30",
+  "18:00",
+  "18:30",
+  "19:00",
+  "19:30",
+  "20:00",
+  "20:30",
+  "21:00",
+  "21:30",
+  "22:00",
+  "22:30",
+  "23:00",
+  "23:30",
+  "00:00",
+  "00:30",
+  "01:00",
+  "01:30",
+  "02:00",
+  "02:30",
+  "03:00",
+];
+
+function formatClockTime(
+  value: string
+) {
+  const [
+    hourText,
+    minute,
+  ] = value.split(":");
+
+  const hour =
+    Number(hourText);
+
+  const suffix =
+    hour >= 12
+      ? "PM"
+      : "AM";
+
+  const displayHour =
+    hour % 12 || 12;
+
+  return minute === "00"
+    ? `${displayHour} ${suffix}`
+    : `${displayHour}:${minute} ${suffix}`;
+}
+
 function formatTime(
   dateTime: string
 ) {
@@ -215,7 +285,7 @@ function formatTime(
     hour % 12 || 12;
 
   return minute === "00"
-    ? `${displayHour}:00 ${suffix}`
+    ? `${displayHour} ${suffix}`
     : `${displayHour}:${minute} ${suffix}`;
 }
 
@@ -1571,8 +1641,7 @@ export default function AvailabilityForm({
                                     From
                                   </label>
 
-                                  <input
-                                    type="time"
+                                  <select
                                     value={
                                       window.start
                                     }
@@ -1590,7 +1659,20 @@ export default function AvailabilityForm({
                                       )
                                     }
                                     className="w-full rounded-xl border border-[#E7C766]/25 bg-black px-3 py-2 text-white outline-none focus:border-[#E7C766]"
-                                  />
+                                  >
+                                    {OPERATIONAL_TIME_OPTIONS.map(
+                                      (time) => (
+                                        <option
+                                          key={time}
+                                          value={time}
+                                        >
+                                          {formatClockTime(
+                                            time
+                                          )}
+                                        </option>
+                                      )
+                                    )}
+                                  </select>
                                 </div>
 
                                 <div>
@@ -1598,8 +1680,7 @@ export default function AvailabilityForm({
                                     Until
                                   </label>
 
-                                  <input
-                                    type="time"
+                                  <select
                                     value={
                                       window.end
                                     }
@@ -1617,7 +1698,20 @@ export default function AvailabilityForm({
                                       )
                                     }
                                     className="w-full rounded-xl border border-[#E7C766]/25 bg-black px-3 py-2 text-white outline-none focus:border-[#E7C766]"
-                                  />
+                                  >
+                                    {OPERATIONAL_TIME_OPTIONS.map(
+                                      (time) => (
+                                        <option
+                                          key={time}
+                                          value={time}
+                                        >
+                                          {formatClockTime(
+                                            time
+                                          )}
+                                        </option>
+                                      )
+                                    )}
+                                  </select>
                                 </div>
                               </div>
                             )}
