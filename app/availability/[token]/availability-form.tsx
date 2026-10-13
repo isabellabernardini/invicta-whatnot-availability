@@ -1192,8 +1192,8 @@ export default function AvailabilityForm({
     confirmedPerson
   ) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-6">
-        <div className="luxury-card w-full max-w-lg p-8 text-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#050505] px-6 text-white">
+        <div className="w-full max-w-lg rounded-3xl border border-[#E7C766]/30 bg-[#0A0A0A] p-8 text-center shadow-2xl shadow-black/40">
           <p className="kicker">
             Availability Submitted
           </p>
@@ -1203,7 +1203,7 @@ export default function AvailabilityForm({
             {confirmedPerson.name}
           </h1>
 
-          <p className="muted mt-3">
+          <p className="mt-3 text-[#D8D8D8]">
             Your additional unavailable
             times have been saved. Your
             recurring unavailable times
@@ -1217,7 +1217,7 @@ export default function AvailabilityForm({
                 false
               )
             }
-            className="secondary-button mt-6 rounded-xl px-5 py-2.5 text-sm"
+            className="mt-6 rounded-xl border border-[#E7C766]/40 bg-transparent px-5 py-2.5 text-sm font-medium text-[#E7C766] transition hover:bg-[#E7C766]/10"
           >
             Edit submission
           </button>
@@ -1230,7 +1230,7 @@ export default function AvailabilityForm({
     !confirmedPerson
   ) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-6">
+      <main className="flex min-h-screen items-center justify-center bg-[#050505] px-6 text-white">
         <div className="w-full max-w-lg rounded-3xl border border-[#E7C766]/30 bg-[#080808] p-8 shadow-2xl shadow-black/30">
           <div className="mb-6 inline-flex rounded-full border border-[#E7C766]/30 bg-[#E7C766]/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E7C766]">
             Invicta Whatnot
@@ -1240,7 +1240,7 @@ export default function AvailabilityForm({
             Weekly Availability
           </h1>
 
-          <p className="muted mt-3 text-sm leading-6">
+          <p className="mt-3 text-sm leading-6 text-[#D8D8D8]">
             Select your name. Your
             recurring unavailable times
             will already be blocked, so
@@ -1249,7 +1249,7 @@ export default function AvailabilityForm({
           </p>
 
           <div className="mt-7">
-            <label className="mb-2 block text-sm text-[#B7B0A0]">
+            <label className="mb-2 block text-sm font-medium text-white">
               Your name
             </label>
 
@@ -1266,7 +1266,7 @@ export default function AvailabilityForm({
                     .value
                 )
               }
-              className="w-full rounded-xl border border-[#D4AF37]/20 bg-[#0D0D0D] px-4 py-3 text-[#F5F2E8]"
+              className="w-full rounded-2xl border border-[#E7C766]/35 bg-black px-4 py-3 text-white outline-none focus:border-[#E7C766]"
             >
               <option value="">
                 Select your
@@ -1301,7 +1301,7 @@ export default function AvailabilityForm({
             disabled={
               !personId
             }
-            className="gold-button mt-6 w-full rounded-xl px-5 py-3 disabled:opacity-40"
+            className="mt-6 w-full rounded-2xl bg-[#E7C766] px-5 py-3 font-semibold text-black transition hover:bg-[#F1D77B] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Continue
           </button>
@@ -1311,7 +1311,7 @@ export default function AvailabilityForm({
   }
 
   return (
-    <main className="min-h-screen px-5 py-8">
+    <main className="min-h-screen bg-[#050505] px-5 py-8 text-white">
       <div className="mx-auto max-w-3xl">
         <div className="rounded-3xl border border-[#E7C766]/25 bg-gradient-to-br from-[#111111] to-[#080808] p-6 md:p-7">
           <div className="inline-flex rounded-full border border-[#E7C766]/25 bg-[#E7C766]/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#E7C766]">
@@ -1325,15 +1325,15 @@ export default function AvailabilityForm({
             }
           </h1>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#B7B0A0]">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#D8D8D8]">
             Your recurring unavailable times are already blocked for you.
             Add only anything extra that is different for this week.
           </p>
         </div>
 
         {loadingRules && (
-          <div className="luxury-card mt-6 p-5">
-            <p className="text-sm text-[#B7B0A0]">
+          <div className="mt-6 rounded-2xl border border-[#E7C766]/20 bg-[#0A0A0A] p-5">
+            <p className="text-sm text-[#D8D8D8]">
               Loading your recurring
               availability...
             </p>
@@ -1341,8 +1341,8 @@ export default function AvailabilityForm({
         )}
 
         {rulesError && (
-          <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4">
-            <p className="text-sm text-red-300">
+          <div className="mt-6 rounded-2xl border border-red-400/30 bg-[#120808] p-4">
+            <p className="text-sm text-white">
               {rulesError}
             </p>
           </div>
@@ -1353,14 +1353,14 @@ export default function AvailabilityForm({
           overriddenShabbatRuleIds.has(
             shabbatRule.id
           ) && (
-            <div className="mt-6 rounded-xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.05] p-4">
+            <div className="mt-6 rounded-2xl border border-[#E7C766]/30 bg-[#E7C766]/[0.06] p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[#E7C766]">
                     Friday night exception
                   </p>
 
-                  <p className="muted mt-1 text-xs">
+                  <p className="mt-1 text-xs text-[#D8D8D8]">
                     Your usual Friday-night
                     restriction is removed
                     for this week.
@@ -1372,7 +1372,7 @@ export default function AvailabilityForm({
                   onClick={
                     restoreSoftShabbat
                   }
-                  className="secondary-button rounded-xl px-4 py-2 text-xs"
+                  className="rounded-xl border border-[#E7C766]/40 bg-transparent px-4 py-2 text-xs font-medium text-[#E7C766] transition hover:bg-[#E7C766]/10"
                 >
                   Restore usual restriction
                 </button>
@@ -1413,11 +1413,11 @@ export default function AvailabilityForm({
                   key={
                     date
                   }
-                  className="luxury-card p-5"
+                  className="rounded-3xl border border-[#E7C766]/20 bg-[#0A0A0A] p-5 shadow-lg shadow-black/20"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-lg font-semibold">
+                      <p className="text-lg font-semibold text-white">
                         {
                           formatDay(
                             date
@@ -1425,7 +1425,7 @@ export default function AvailabilityForm({
                         }
                       </p>
 
-                      <p className="muted mt-1 text-xs">
+                      <p className="mt-1 text-xs text-[#D8D8D8]">
                         Available unless
                         blocked below
                       </p>
@@ -1437,7 +1437,7 @@ export default function AvailabilityForm({
                           date
                         )
                       }
-                      className="secondary-button rounded-xl px-4 py-2 text-xs"
+                      className="rounded-xl border border-[#E7C766]/40 bg-transparent px-4 py-2 text-xs font-medium text-[#E7C766] transition hover:bg-[#E7C766]/10"
                     >
                       + Unavailable time
                     </button>
@@ -1454,8 +1454,8 @@ export default function AvailabilityForm({
                             key={`${block.id}-${date}`}
                             className={
                               block.overridable
-                                ? "rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/[0.06] p-4"
-                                : "rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                                ? "rounded-2xl border border-[#E7C766]/35 bg-[#E7C766]/[0.06] p-4"
+                                : "rounded-2xl border border-[#E7C766]/20 bg-black p-4"
                             }
                           >
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1469,7 +1469,7 @@ export default function AvailabilityForm({
 
                                   {block.source ===
                                     "shabbat" && (
-                                    <span className="text-[11px] text-[#8F897C]">
+                                    <span className="text-[11px] text-[#D8D8D8]">
                                       Automatic Shabbat time
                                     </span>
                                   )}
@@ -1481,7 +1481,7 @@ export default function AvailabilityForm({
                                   }
                                 </p>
 
-                                <p className="muted mt-1 text-xs">
+                                <p className="mt-1 text-xs text-[#D8D8D8]">
                                   {formatTime(
                                     block.displayStart
                                   )}{" "}
@@ -1500,7 +1500,7 @@ export default function AvailabilityForm({
                                       block
                                     )
                                   }
-                                  className="secondary-button rounded-xl px-4 py-2 text-xs"
+                                  className="rounded-xl border border-[#E7C766]/40 bg-transparent px-4 py-2 text-xs font-medium text-[#E7C766] transition hover:bg-[#E7C766]/10"
                                 >
                                   I can work this Friday night
                                 </button>
@@ -1523,12 +1523,13 @@ export default function AvailabilityForm({
                             key={
                               window.index
                             }
-                            className="rounded-xl border border-white/10 p-4"
+                            className="rounded-2xl border border-[#E7C766]/20 bg-black p-4"
                           >
                             <div className="mb-4 flex items-center justify-between gap-4">
-                              <label className="flex items-center gap-2 text-sm">
+                              <label className="flex items-center gap-2 text-sm text-white">
                                 <input
                                   type="checkbox"
+                                  className="accent-[#E7C766]"
                                   checked={
                                     window.allDay
                                   }
@@ -1557,7 +1558,7 @@ export default function AvailabilityForm({
                                     window.index
                                   )
                                 }
-                                className="text-xs text-red-300"
+                                className="text-xs font-medium text-[#E7C766] hover:text-[#F1D77B]"
                               >
                                 Remove
                               </button>
@@ -1566,7 +1567,7 @@ export default function AvailabilityForm({
                             {!window.allDay && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="mb-1 block text-xs text-[#8F897C]">
+                                  <label className="mb-1 block text-xs font-medium text-white">
                                     From
                                   </label>
 
@@ -1588,12 +1589,12 @@ export default function AvailabilityForm({
                                         }
                                       )
                                     }
-                                    className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-3 py-2"
+                                    className="w-full rounded-xl border border-[#E7C766]/25 bg-black px-3 py-2 text-white outline-none focus:border-[#E7C766]"
                                   />
                                 </div>
 
                                 <div>
-                                  <label className="mb-1 block text-xs text-[#8F897C]">
+                                  <label className="mb-1 block text-xs font-medium text-white">
                                     Until
                                   </label>
 
@@ -1615,7 +1616,7 @@ export default function AvailabilityForm({
                                         }
                                       )
                                     }
-                                    className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-3 py-2"
+                                    className="w-full rounded-xl border border-[#E7C766]/25 bg-black px-3 py-2 text-white outline-none focus:border-[#E7C766]"
                                   />
                                 </div>
                               </div>
@@ -1631,7 +1632,7 @@ export default function AvailabilityForm({
           )}
         </div>
 
-        <section className="mt-8 rounded-3xl border border-[#E7C766]/30 bg-[#E7C766]/[0.055] p-5 md:p-6">
+        <section className="mt-8 rounded-3xl border border-[#E7C766]/30 bg-[#0A0A0A] p-5 md:p-6">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E7C766] text-sm font-bold text-black">
               AI
@@ -1642,7 +1643,7 @@ export default function AvailabilityForm({
                 Weekly notes for the scheduler
               </p>
 
-              <p className="mt-1 text-xs leading-5 text-[#B7B0A0]">
+              <p className="mt-1 text-xs leading-5 text-[#D8D8D8]">
                 Optional. Add preferences or exceptions in your own words.
                 The scheduling AI will interpret this together with your
                 unavailable times.
@@ -1659,10 +1660,10 @@ export default function AvailabilityForm({
             }
             rows={4}
             placeholder="Example: I can work Friday night this week, but please avoid 6 AM shifts if possible."
-            className="mt-4 w-full resize-none rounded-2xl border border-[#E7C766]/25 bg-black px-4 py-3 text-sm text-white outline-none placeholder:text-[#6F6A60] focus:border-[#E7C766]/70"
+            className="mt-4 w-full resize-none rounded-2xl border border-[#E7C766]/35 bg-black px-4 py-3 text-sm text-white outline-none placeholder:text-[#8A8A8A] focus:border-[#E7C766]"
           />
 
-          <p className="mt-2 text-[11px] text-[#8F897C]">
+          <p className="mt-2 text-[11px] text-[#D8D8D8]">
             You can leave this blank if there is nothing else to add.
           </p>
         </section>
