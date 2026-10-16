@@ -96,6 +96,7 @@ export default function AvailabilityForm({ week, people, group }: {
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [notes, setNotes] = useState("");
   const days = useMemo(() => dateRange(week.week_start, week.week_end), [week.week_start, week.week_end]);
   const groupLabel = group === "girls" ? "Girls" : "Boys";
   const panel = "min-h-screen bg-[#090909] px-4 py-8 text-white sm:px-6 sm:py-12";
@@ -124,6 +125,15 @@ export default function AvailabilityForm({ week, people, group }: {
             endDate.toISOString().slice(0, 10) === nextDate(startDate.toISOString().slice(0, 10)),
         };
       });
+      // Restore existing notes so edits never silently erase preferences.
+      const { data: submission, error: preferencesError } = await supabase
+        .from("availability_submissions")
+        .select("notes")
+        .eq("week_id", week.id)
+        .eq("person_id", person.id)
+        .maybeSingle();
+      if (preferencesError) throw preferencesError;
+      setNotes(submission?.notes ?? "");
       setWindows(existing);
       setConfirmedPerson(person);
     } catch (e) {
@@ -211,8 +221,15 @@ export default function AvailabilityForm({ week, people, group }: {
         person_id: confirmedPerson.id,
         submitted_at: now,
         updated_at: now,
+        notes: notes.trim() || null,
+        // A modified note must not leave old AI interpretations in place.
+        parsed_preferences: null,
+        preferences_parsed_at: null,
       }, { onConflict: "week_id,person_id" });
       if (submissionError) throw submissionError;
+      // The scheduler's generation flow can parse saved notes later.
+      // We intentionally do not call a local AI endpoint here: the public
+      // form and scheduler are separate Next.js applications.
       setSuccess(true);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Could not submit availability.");
@@ -259,7 +276,7 @@ export default function AvailabilityForm({ week, people, group }: {
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
           <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 3 AM (next day)</p>
-          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setWindows([]); setErrorMessage(""); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
+          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setWindows([]); setNotes(""); setErrorMessage(""); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
         </div>
       </header>
       <div className="space-y-4">
@@ -303,6 +320,29 @@ export default function AvailabilityForm({ week, people, group }: {
           </section>;
         })}
       </div>
+      <section className={`${card} mt-6 p-5 sm:p-6`}>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">AI preferences & notes</p>
+        <h2 className="mt-2 text-xl font-semibold text-white">Any scheduling preferences?</h2>
+        <p className="mt-2 text-sm leading-6 text-[#C5C5C5]">
+          Optional. Tell us your preferences in your own words. The scheduling system
+          can interpret them when preparing the weekly schedule. For times you
+          absolutely cannot work, please use the unavailable periods above.
+        </p>
+        <label htmlFor="weekly-notes" className="mt-5 mb-2 block text-sm font-semibold text-white">
+          Your notes or preferences
+        </label>
+        <textarea
+          id="weekly-notes"
+          rows={5}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder={"For example:\n• No more than 3 shifts starting at 6 AM.\n• I prefer afternoons this week.\n• Please avoid Friday night if possible."}
+          className="w-full resize-y rounded-xl border border-[#494949] bg-[#252525] px-4 py-3 text-sm leading-6 text-white placeholder:text-[#929292] outline-none transition focus:border-[#F4C542] focus:ring-2 focus:ring-[#F4C542]/20"
+        />
+        <p className="mt-2 text-xs leading-5 text-[#AFAFAF]">
+          Notes are saved with your weekly submission and can be interpreted by AI in the scheduler.
+        </p>
+      </section>
       {errorMessage && <p role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">{errorMessage}</p>}
       <div className="mt-6 rounded-2xl border border-[#353535] bg-[#171717] p-5">
         <p className="mb-4 text-xs leading-6 text-[#BDBDBD]">You can submit with no unavailable periods if you are fully available. Submitting again will replace your previous availability for this week.</p>
