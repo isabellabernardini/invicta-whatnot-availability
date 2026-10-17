@@ -11,9 +11,13 @@ export default async function GirlsAvailabilityPage({
     token: string;
   }>;
 }) {
-  const { token } = await params;
+  const { token } =
+    await params;
 
-  const { data: week, error } =
+  const {
+    data: week,
+    error,
+  } =
     await supabase
       .from("schedule_weeks")
       .select(`
@@ -27,34 +31,110 @@ export default async function GirlsAvailabilityPage({
       )
       .single();
 
-  if (error || !week) {
+  if (
+    error ||
+    !week
+  ) {
     notFound();
   }
 
-  const {
-    data: people,
-    error: peopleError,
-  } = await supabase
-    .from("people")
-    .select(`
-      id,
-      name
-    `)
-    .eq("gender", "female")
-    .eq("active", true)
-    .order("name");
+  const [
+    peopleResult,
+    recurringRulesResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from("people")
+        .select(`
+          id,
+          name
+        `)
+        .eq(
+          "gender",
+          "female"
+        )
+        .eq(
+          "active",
+          true
+        )
+        .order(
+          "name"
+        ),
 
-  if (peopleError) {
+      supabase
+        .from(
+          "recurring_availability_rules"
+        )
+        .select(`
+          id,
+          person_id,
+          weekday,
+          all_day,
+          start_time,
+          end_time,
+          ends_next_day,
+          strength,
+          active
+        `)
+        .eq(
+          "active",
+          true
+        ),
+    ]);
+
+  if (
+    peopleResult.error
+  ) {
     throw new Error(
-      peopleError.message
+      peopleResult.error.message
     );
   }
 
+  if (
+    recurringRulesResult.error
+  ) {
+    throw new Error(
+      recurringRulesResult
+        .error
+        .message
+    );
+  }
+
+  const people =
+    peopleResult.data ??
+    [];
+
+  const girlIds =
+    new Set(
+      people.map(
+        (person) =>
+          person.id
+      )
+    );
+
+  const recurringRules =
+    (
+      recurringRulesResult.data ??
+      []
+    ).filter(
+      (rule) =>
+        girlIds.has(
+          rule.person_id
+        )
+    );
+
   return (
     <AvailabilityForm
-      week={week}
-      people={people ?? []}
+      week={
+        week
+      }
+      people={
+        people
+      }
       group="girls"
+      recurringRules={
+        recurringRules
+      }
     />
   );
 }
