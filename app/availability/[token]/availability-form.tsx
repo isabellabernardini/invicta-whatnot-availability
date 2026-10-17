@@ -13,6 +13,18 @@ type AvailabilityWindow = {
   allDay: boolean;
 };
 
+type RecurringAvailabilityRule = {
+  id: string;
+  person_id: string;
+  weekday: number;
+  all_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  ends_next_day: boolean;
+  strength: "hard" | "soft";
+  active: boolean;
+};
+
 const FIRST_MINUTE = 6 * 60;
 const LAST_MINUTE = 27 * 60; // 3 AM the following calendar day
 const STEP = 30;
@@ -21,6 +33,18 @@ function formatDay(date: string) {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "long", month: "short", day: "numeric", timeZone: "UTC",
   }).format(new Date(`${date}T12:00:00Z`));
+}
+
+function weekdayForDate(date: string) {
+  return new Date(`${date}T12:00:00Z`).getUTCDay();
+}
+
+function formatClock(value: string) {
+  const [hourText, minuteText] = value.slice(0, 5).split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 function dateRange(start: string, end: string) {
@@ -84,10 +108,11 @@ const selectClass = "w-full min-w-0 rounded-xl border border-[#494949] bg-[#2525
 const yellowButton = "rounded-xl bg-[#F4C542] px-5 py-3 font-semibold text-[#111111] transition hover:bg-[#FFDA65] disabled:cursor-not-allowed disabled:opacity-40";
 const outlineButton = "rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-2.5 text-sm font-semibold text-[#F4C542] transition hover:border-[#F4C542] hover:bg-[#37301F]";
 
-export default function AvailabilityForm({ week, people, group }: {
+export default function AvailabilityForm({ week, people, group, recurringRules = [] }: {
   week: Week;
   people: Person[];
   group: Group;
+  recurringRules?: RecurringAvailabilityRule[];
 }) {
   const [personId, setPersonId] = useState("");
   const [confirmedPerson, setConfirmedPerson] = useState<Person | null>(null);
@@ -98,6 +123,27 @@ export default function AvailabilityForm({ week, people, group }: {
   const [errorMessage, setErrorMessage] = useState("");
   const [notes, setNotes] = useState("");
   const days = useMemo(() => dateRange(week.week_start, week.week_end), [week.week_start, week.week_end]);
+
+  function recurringRulesForDay(personId: string, date: string) {
+    const weekday = weekdayForDate(date);
+    return recurringRules.filter((rule) =>
+      rule.active &&
+      rule.person_id === personId &&
+      rule.weekday === weekday
+    );
+  }
+
+  function recurringRuleLabel(rule: RecurringAvailabilityRule) {
+    if (rule.all_day) return "6:00 AM – 3:00 AM next day";
+    if (!rule.start_time || !rule.end_time) return "Standing unavailable period";
+
+    const startHour = Number(rule.start_time.slice(0, 2));
+    const endHour = Number(rule.end_time.slice(0, 2));
+    const nextDay = rule.ends_next_day || endHour < 6 || endHour < startHour;
+
+    return `${formatClock(rule.start_time)} – ${formatClock(rule.end_time)}${nextDay ? " next day" : ""}`;
+  }
+
   const groupLabel = group === "girls" ? "Girls" : "Boys";
   const panel = "min-h-screen bg-[#090909] px-4 py-8 text-white sm:px-6 sm:py-12";
 
@@ -283,19 +329,40 @@ export default function AvailabilityForm({ week, people, group }: {
         {days.map((date) => {
           const dayWindows = windows.map((w, index) => ({ ...w, index })).filter((w) => w.date === date);
           const isFullDay = dayWindows.some((w) => w.allDay);
+          const dayRecurringRules = confirmedPerson
+            ? recurringRulesForDay(confirmedPerson.id, date)
+            : [];
+          const hasWeeklyOverride = dayWindows.length > 0;
           return <section key={date} className={`${card} p-5 sm:p-6`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-white">{formatDay(date)}</h2>
-                <p className="mt-1 text-xs text-[#BDBDBD]">{isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : "Available all day unless you add a period"}</p>
+                <p className="mt-1 text-xs text-[#BDBDBD]">{isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : dayRecurringRules.length ? "Standing recurring unavailability applies" : "Available all day unless you add a period"}</p>
               </div>
               {!isFullDay && <button type="button" onClick={() => addWindow(date)} className={outlineButton}>+ Add unavailable period</button>}
             </div>
+            {dayRecurringRules.length > 0 && (
+              <div className="mt-4 rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#F4C542]">Standing recurring rule</p>
+                <div className="mt-2 space-y-1">
+                  {dayRecurringRules.map((rule) => (
+                    <p key={rule.id} className="text-sm text-[#E8D6A2]">
+                      Unavailable {recurringRuleLabel(rule)}
+                    </p>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-[#B9B9B9]">
+                  {hasWeeklyOverride
+                    ? "The unavailable period(s) entered below replace this standing rule for this scheduling day only."
+                    : "This standing rule applies automatically. Add a period below only if you need to replace it for this week."}
+                </p>
+              </div>
+            )}
             <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">
               <input type="checkbox" className="h-4 w-4 accent-[#F4C542]" checked={isFullDay} onChange={(e) => setFullDay(date, e.target.checked)} />
               Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 3 AM)</span>
             </label>
-            {!isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">No unavailable periods added. You're available for this scheduling day.</p>}
+            {!isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? "No weekly override added. Your standing recurring rule remains active." : "No unavailable periods added. You're available for this scheduling day."}</p>}
             {!isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
               {dayWindows.map((w, i) => <div key={w.index} className="rounded-xl border border-[#434343] bg-[#202020] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
