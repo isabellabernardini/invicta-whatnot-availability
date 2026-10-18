@@ -31,30 +31,113 @@ export default async function BoysAvailabilityPage({
     notFound();
   }
 
-  const {
-    data: people,
-    error: peopleError,
-  } = await supabase
-    .from("people")
-    .select(`
-      id,
-      name
-    `)
-    .eq("gender", "male")
-    .eq("active", true)
-    .order("name");
+  const [
+    peopleResult,
+    recurringRulesResult,
+    shabbatRulesResult,
+  ] = await Promise.all([
+    supabase
+      .from("people")
+      .select(`
+        id,
+        name
+      `)
+      .eq("gender", "male")
+      .eq("active", true)
+      .order("name"),
 
-  if (peopleError) {
+    supabase
+      .from(
+        "recurring_availability_rules"
+      )
+      .select(`
+        id,
+        person_id,
+        weekday,
+        all_day,
+        start_time,
+        end_time,
+        ends_next_day,
+        strength,
+        active
+      `)
+      .eq("active", true),
+
+    supabase
+      .from(
+        "shabbat_availability_rules"
+      )
+      .select(`
+        id,
+        person_id,
+        mode,
+        active
+      `)
+      .eq("active", true),
+  ]);
+
+  if (peopleResult.error) {
     throw new Error(
-      peopleError.message
+      peopleResult.error.message
     );
   }
+
+  if (recurringRulesResult.error) {
+    throw new Error(
+      recurringRulesResult.error.message
+    );
+  }
+
+  if (shabbatRulesResult.error) {
+    throw new Error(
+      shabbatRulesResult.error.message
+    );
+  }
+
+  const people =
+    peopleResult.data ?? [];
+
+  const boyIds =
+    new Set(
+      people.map(
+        (person) =>
+          person.id
+      )
+    );
+
+  const recurringRules =
+    (
+      recurringRulesResult.data ??
+      []
+    ).filter(
+      (rule) =>
+        boyIds.has(
+          rule.person_id
+        )
+    );
+
+  const shabbatRules =
+    (
+      shabbatRulesResult.data ??
+      []
+    ).filter(
+      (rule) =>
+        boyIds.has(
+          rule.person_id
+        )
+    );
 
   return (
     <AvailabilityForm
       week={week}
-      people={people ?? []}
+      people={people}
       group="boys"
+      recurringRules={
+        recurringRules
+      }
+      shabbatRules={
+        shabbatRules
+      }
     />
   );
 }
