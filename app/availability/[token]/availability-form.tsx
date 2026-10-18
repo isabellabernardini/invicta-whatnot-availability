@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Group = "girls" | "boys";
@@ -23,6 +23,24 @@ type RecurringAvailabilityRule = {
   ends_next_day: boolean;
   strength: "hard" | "soft";
   active: boolean;
+};
+
+
+type ShabbatMode =
+  | "full_shabbat"
+  | "friday_night_hard"
+  | "friday_night_soft";
+
+type ShabbatAvailabilityRule = {
+  id: string;
+  person_id: string;
+  mode: ShabbatMode;
+  active: boolean;
+};
+
+type ShabbatTimes = {
+  candleLighting: string;
+  havdalah: string;
 };
 
 const FIRST_MINUTE = 6 * 60;
@@ -108,11 +126,12 @@ const selectClass = "w-full min-w-0 rounded-xl border border-[#494949] bg-[#2525
 const yellowButton = "rounded-xl bg-[#F4C542] px-5 py-3 font-semibold text-[#111111] transition hover:bg-[#FFDA65] disabled:cursor-not-allowed disabled:opacity-40";
 const outlineButton = "rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-2.5 text-sm font-semibold text-[#F4C542] transition hover:border-[#F4C542] hover:bg-[#37301F]";
 
-export default function AvailabilityForm({ week, people, group, recurringRules = [] }: {
+export default function AvailabilityForm({ week, people, group, recurringRules = [], shabbatRules = [] }: {
   week: Week;
   people: Person[];
   group: Group;
   recurringRules?: RecurringAvailabilityRule[];
+  shabbatRules?: ShabbatAvailabilityRule[];
 }) {
   const [personId, setPersonId] = useState("");
   const [confirmedPerson, setConfirmedPerson] = useState<Person | null>(null);
@@ -122,7 +141,78 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
   const [success, setSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [notes, setNotes] = useState("");
+  const [shabbatTimes, setShabbatTimes] =
+    useState<ShabbatTimes | null>(null);
   const days = useMemo(() => dateRange(week.week_start, week.week_end), [week.week_start, week.week_end]);
+
+  const friday = useMemo(
+  () =>
+    days.find(
+      (date) =>
+        weekdayForDate(date) === 5
+    ) ?? null,
+  [days]
+);
+
+useEffect(() => {
+  if (
+    group !== "girls" ||
+    !friday ||
+    shabbatRules.length === 0
+  ) {
+    setShabbatTimes(null);
+    return;
+  }
+
+  let cancelled = false;
+
+  fetch(
+    `/api/shabbat-time?date=${friday}`
+  )
+    .then(async (response) => {
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data?.ok ||
+        !data?.candleLighting ||
+        !data?.havdalah
+      ) {
+        throw new Error(
+          data?.error ||
+            "Could not load Shabbat times."
+        );
+      }
+
+      if (!cancelled) {
+        setShabbatTimes({
+          candleLighting:
+            data.candleLighting,
+          havdalah:
+            data.havdalah,
+        });
+      }
+    })
+    .catch((error) => {
+      console.error(
+        "Could not load Shabbat times:",
+        error
+      );
+
+      if (!cancelled) {
+        setShabbatTimes(null);
+      }
+    });
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  friday,
+  group,
+  shabbatRules.length,
+]);
 
   function recurringRulesForDay(personId: string, date: string) {
     const weekday = weekdayForDate(date);
@@ -188,6 +278,52 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
       setLoadingExisting(false);
     }
   }
+
+  function shabbatRuleForPerson(
+  personId: string
+) {
+  return (
+    shabbatRules.find(
+      (rule) =>
+        rule.active &&
+        rule.person_id === personId
+    ) ?? null
+  );
+}
+
+function formatShabbatClock(
+  value: string
+) {
+  const match =
+    value.match(
+      /T(\d{2}):(\d{2})/
+    );
+
+  if (!match) {
+    return value;
+  }
+
+  const hour =
+    Number(match[1]);
+
+  const minute =
+    Number(match[2]);
+
+  const displayHour =
+    hour % 12 || 12;
+
+  const suffix =
+    hour < 12
+      ? "AM"
+      : "PM";
+
+  return `${displayHour}:${String(
+    minute
+  ).padStart(
+    2,
+    "0"
+  )} ${suffix}`;
+}
 
   function addWindow(date: string) {
     setWindows((current) => [...current, { date, start: "09:00", end: "18:00", allDay: false }]);
@@ -333,6 +469,31 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
             ? recurringRulesForDay(confirmedPerson.id, date)
             : [];
           const hasWeeklyOverride = dayWindows.length > 0;
+          const shabbatRule =
+            confirmedPerson
+              ? shabbatRuleForPerson(
+                  confirmedPerson.id
+                )
+              : null;
+
+          const weekday =
+            weekdayForDate(date);
+
+          const showFridayShabbat =
+            Boolean(
+              shabbatRule &&
+              shabbatTimes &&
+              weekday === 5
+            );
+
+          const showSaturdayShabbat =
+            Boolean(
+              shabbatRule &&
+              shabbatTimes &&
+              shabbatRule.mode ===
+                "full_shabbat" &&
+              weekday === 6
+            );
           return <section key={date} className={`${card} p-5 sm:p-6`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -356,6 +517,40 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
                     ? "The unavailable period(s) entered below replace this standing rule for this scheduling day only."
                     : "This standing rule applies automatically. Add a period below only if you need to replace it for this week."}
                 </p>
+              </div>
+            )}
+
+            {(showFridayShabbat ||
+              showSaturdayShabbat) && (
+              <div className="mt-4 rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#F4C542]">
+                  Shabbat restriction
+                </p>
+
+                {showFridayShabbat && (
+                  <p className="mt-2 text-sm text-[#E8D6A2]">
+                    Unavailable from candle lighting (
+                    {formatShabbatClock(
+                      shabbatTimes!.candleLighting
+                    )}
+                    ) until 3:00 AM next day
+                    {shabbatRule?.mode ===
+                    "friday_night_soft"
+                      ? " (soft)"
+                      : ""}
+                    .
+                  </p>
+                )}
+
+                {showSaturdayShabbat && (
+                  <p className="mt-2 text-sm text-[#E8D6A2]">
+                    Unavailable from 6:00 AM until Havdalah (
+                    {formatShabbatClock(
+                      shabbatTimes!.havdalah
+                    )}
+                    ).
+                  </p>
+                )}
               </div>
             )}
             <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">

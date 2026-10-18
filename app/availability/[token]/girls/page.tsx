@@ -41,6 +41,7 @@ export default async function GirlsAvailabilityPage({
   const [
     peopleResult,
     recurringRulesResult,
+    shabbatRulesResult,
   ] =
     await Promise.all([
       supabase
@@ -80,6 +81,18 @@ export default async function GirlsAvailabilityPage({
           "active",
           true
         ),
+      supabase
+        .from("shabbat_availability_rules")
+        .select(`
+          id,
+          person_id,
+          mode,
+          active
+        `)
+        .eq(
+          "active",
+          true
+        ),
     ]);
 
   if (
@@ -95,6 +108,16 @@ export default async function GirlsAvailabilityPage({
   ) {
     throw new Error(
       recurringRulesResult
+        .error
+        .message
+    );
+  }
+
+  if (
+    shabbatRulesResult.error
+  ) {
+    throw new Error(
+      shabbatRulesResult
         .error
         .message
     );
@@ -123,6 +146,18 @@ export default async function GirlsAvailabilityPage({
         )
     );
 
+
+  const shabbatRules =
+    (
+      shabbatRulesResult.data ??
+      []
+    ).filter(
+      (rule) =>
+        girlIds.has(
+          rule.person_id
+        )
+    );
+
   return (
     <AvailabilityForm
       week={
@@ -134,6 +169,9 @@ export default async function GirlsAvailabilityPage({
       group="girls"
       recurringRules={
         recurringRules
+      }
+      shabbatRules={
+        shabbatRules
       }
     />
   );
