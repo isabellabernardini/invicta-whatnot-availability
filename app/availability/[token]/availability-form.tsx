@@ -156,7 +156,6 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
 
 useEffect(() => {
   if (
-    group !== "girls" ||
     !friday ||
     shabbatRules.length === 0
   ) {
