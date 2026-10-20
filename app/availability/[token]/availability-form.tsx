@@ -418,7 +418,35 @@ function formatShabbatClock(
       setLoading(false);
     }
   }
+    const hasRecurringRestrictions =
+        confirmedPerson
+          ? recurringRules.some(
+              (rule) =>
+                rule.active &&
+                rule.person_id === confirmedPerson.id &&
+                days.some(
+                  (date) =>
+                    weekdayForDate(date) === rule.weekday
+                ) &&
+                (rule.all_day ||
+                  Boolean(rule.start_time && rule.end_time))
+            )
+          : false;
 
+      const hasShabbatRestrictions =
+        confirmedPerson
+          ? shabbatRules.some(
+              (rule) =>
+                rule.active &&
+                rule.person_id === confirmedPerson.id &&
+                friday !== null
+            )
+          : false;
+
+      const isFullyAvailable =
+        windows.length === 0 &&
+        !hasRecurringRestrictions &&
+        !hasShabbatRestrictions;
   if (success && confirmedPerson) {
     return <main className={`${panel} flex items-center justify-center`}>
       <div className={`${card} w-full max-w-lg p-8 text-center sm:p-10`}>
@@ -607,7 +635,7 @@ function formatShabbatClock(
       {errorMessage && <p role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">{errorMessage}</p>}
       <div className="mt-6 rounded-2xl border border-[#353535] bg-[#171717] p-5">
         <p className="mb-4 text-xs leading-6 text-[#BDBDBD]">You can submit with no unavailable periods if you are fully available. Submitting again will replace your previous availability for this week.</p>
-        <button type="button" disabled={loading} onClick={submitAvailability} className={`${yellowButton} w-full py-4`}>{loading ? "Saving…" : windows.length === 0 ? "Submit — Fully Available" : "Submit Availability"}</button>
+        <button type="button" disabled={loading} onClick={submitAvailability} className={`${yellowButton} w-full py-4`}>{loading ? "Saving…" : isFullyAvailable ? "Submit — Fully Available" : "Submit Availability"}</button>
       </div>
     </div>
   </main>;
