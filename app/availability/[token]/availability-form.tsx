@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import VacationCalendar, {
+  daysOf,
+  VACATION_OVERLAP_THRESHOLD,
+  type VacationRequest,
+} from "./vacation-calendar";
 
 type Group = "girls" | "boys";
 type Week = { id: string; week_start: string; week_end: string };
@@ -143,6 +148,11 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
   const [notes, setNotes] = useState("");
   const [shabbatTimes, setShabbatTimes] =
     useState<ShabbatTimes | null>(null);
+  // Vacation requests (girls): all active requests that end today or later,
+  // or that touch this week.
+  const [vacations, setVacations] = useState<VacationRequest[]>([]);
+  const [showVacationCalendar, setShowVacationCalendar] = useState(false);
+  const [crowdedDays, setCrowdedDays] = useState<{ date: string; count: number }[]>([]);
   const days = useMemo(() => dateRange(week.week_start, week.week_end), [week.week_start, week.week_end]);
 
   const friday = useMemo(
@@ -236,6 +246,37 @@ useEffect(() => {
   const groupLabel = group === "girls" ? "Girls" : "Boys";
   const panel = "min-h-screen bg-[#090909] px-4 py-8 text-white sm:px-6 sm:py-12";
 
+  const peopleIds = useMemo(() => new Set(people.map((p) => p.id)), [people]);
+
+  async function loadVacations(): Promise<VacationRequest[]> {
+    if (group !== "girls") return [];
+    const today = new Date().toISOString().slice(0, 10);
+    const from = today < week.week_start ? today : week.week_start;
+    const { data, error } = await supabase
+      .from("vacation_requests")
+      .select("id,person_id,start_date,end_date,note")
+      .is("cancelled_at", null)
+      .gte("end_date", from)
+      .order("start_date");
+    if (error) throw error;
+    const rows = ((data ?? []) as VacationRequest[]).filter((r) => peopleIds.has(r.person_id));
+    setVacations(rows);
+    return rows;
+  }
+
+  /** Number of OTHER girls (not `selfId`) off on each day. */
+  function othersOffByDay(rows: VacationRequest[], selfId: string) {
+    const byDay = new Map<string, Set<string>>();
+    for (const r of rows) {
+      if (r.person_id === selfId) continue;
+      for (const day of daysOf(r)) {
+        if (!byDay.has(day)) byDay.set(day, new Set());
+        byDay.get(day)!.add(r.person_id);
+      }
+    }
+    return new Map([...byDay].map(([day, set]) => [day, set.size]));
+  }
+
   async function confirmPerson() {
     const person = people.find((p) => p.id === personId);
     if (!person) return;
@@ -247,6 +288,8 @@ useEffect(() => {
         .select("start_at,end_at,type")
         .eq("week_id", week.id)
         .eq("person_id", person.id)
+        // Vacation days are managed by the vacation calendar, not this form.
+        .neq("type", "vacation")
         .order("start_at");
       if (error) throw error;
       const existing: AvailabilityWindow[] = (data ?? []).map((block) => {
@@ -270,6 +313,17 @@ useEffect(() => {
       if (preferencesError) throw preferencesError;
       setNotes(submission?.notes ?? "");
       setWindows(existing);
+      // Girls: ask for help on days when 3+ other girls are on vacation.
+      if (group === "girls") {
+        const rows = await loadVacations();
+        const mine = new Set(rows.filter((r) => r.person_id === person.id).flatMap(daysOf));
+        const others = othersOffByDay(rows, person.id);
+        setCrowdedDays(
+          days
+            .filter((date) => !mine.has(date) && (others.get(date) ?? 0) >= VACATION_OVERLAP_THRESHOLD)
+            .map((date) => ({ date, count: others.get(date) ?? 0 }))
+        );
+      }
       setConfirmedPerson(person);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Could not load your previous availability.");
@@ -379,7 +433,9 @@ function formatShabbatClock(
       // Preserve the standalone project's existing replacement/upsert behavior.
       const { error: deleteError } = await supabase
         .from("availability_blocks").delete()
-        .eq("week_id", week.id).eq("person_id", confirmedPerson.id);
+        .eq("week_id", week.id).eq("person_id", confirmedPerson.id)
+        // Never remove vacation days requested in advance.
+        .neq("type", "vacation");
       if (deleteError) throw deleteError;
       if (windows.length) {
         const rows = windows.map((w) => {
@@ -443,10 +499,59 @@ function formatShabbatClock(
             )
           : false;
 
+      const hasVacationThisWeek =
+        confirmedPerson
+          ? vacations.some(
+              (r) =>
+                r.person_id === confirmedPerson.id &&
+                daysOf(r).some((d) => days.includes(d))
+            )
+          : false;
+
       const isFullyAvailable =
         windows.length === 0 &&
         !hasRecurringRestrictions &&
-        !hasShabbatRestrictions;
+        !hasShabbatRestrictions &&
+        !hasVacationThisWeek;
+  const myVacationDays = new Set(
+    confirmedPerson
+      ? vacations.filter((r) => r.person_id === confirmedPerson.id).flatMap(daysOf)
+      : []
+  );
+
+  const vacationModals = confirmedPerson && group === "girls" ? (
+    <>
+      {showVacationCalendar && (
+        <VacationCalendar
+          personId={confirmedPerson.id}
+          requests={vacations.filter((r) => r.person_id === confirmedPerson.id)}
+          othersOffByDay={othersOffByDay(vacations, confirmedPerson.id)}
+          onClose={() => setShowVacationCalendar(false)}
+          onSaved={() => { loadVacations().catch(() => undefined); }}
+        />
+      )}
+      {crowdedDays.length > 0 && !showVacationCalendar && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className={`${card} w-full max-w-md p-6 text-white`}>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">We need your help</p>
+            <h2 className="mt-2 text-xl font-semibold">Several girls are on vacation</h2>
+            <ul className="mt-4 space-y-2">
+              {crowdedDays.map((d) => (
+                <li key={d.date} className="rounded-xl border border-orange-400/30 bg-orange-400/10 px-3 py-2 text-sm text-orange-100">
+                  <strong>{formatDay(d.date)}:</strong> {d.count} other girls are taking this day off for vacation.
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 text-sm leading-6 text-[#C5C5C5]">
+              We would really appreciate your availability on {crowdedDays.length === 1 ? "this day" : "these days"} to help us with the scheduling of the lives.
+            </p>
+            <button type="button" onClick={() => setCrowdedDays([])} className={`${yellowButton} mt-5 w-full`}>OK, got it</button>
+          </div>
+        </div>
+      )}
+    </>
+  ) : null;
+
   if (success && confirmedPerson) {
     return <main className={`${panel} flex items-center justify-center`}>
       <div className={`${card} w-full max-w-lg p-8 text-center sm:p-10`}>
@@ -478,6 +583,7 @@ function formatShabbatClock(
   }
 
   return <main className={panel}>
+    {vacationModals}
     <div className="mx-auto max-w-3xl">
       <header className="mb-7">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">Invicta Whatnot · {groupLabel} team</p>
@@ -485,8 +591,14 @@ function formatShabbatClock(
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
           <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 3 AM (next day)</p>
-          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setWindows([]); setNotes(""); setErrorMessage(""); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
+          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setWindows([]); setNotes(""); setErrorMessage(""); setCrowdedDays([]); setVacations([]); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
         </div>
+        {group === "girls" && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#353535] bg-[#171717] px-4 py-3">
+            <p className="text-sm text-[#C5C5C5]">Planning time away? Request vacation days in advance.</p>
+            <button type="button" onClick={() => setShowVacationCalendar(true)} className={outlineButton}>Request vacation days</button>
+          </div>
+        )}
       </header>
       <div className="space-y-4">
         {days.map((date) => {
@@ -529,6 +641,12 @@ function formatShabbatClock(
               </div>
               {!isFullDay && <button type="button" onClick={() => addWindow(date)} className={outlineButton}>+ Add unavailable period</button>}
             </div>
+            {myVacationDays.has(date) && (
+              <div className="mt-4 rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#F4C542]">Vacation</p>
+                <p className="mt-2 text-sm text-[#E8D6A2]">You requested this day off in advance, so you are unavailable all day. Change it with “Request vacation days”.</p>
+              </div>
+            )}
             {dayRecurringRules.length > 0 && (
               <div className="mt-4 rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#F4C542]">Standing recurring rule</p>
