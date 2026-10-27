@@ -143,6 +143,8 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
   const [pin, setPin] = useState("");
   const [confirmedPerson, setConfirmedPerson] = useState<Person | null>(null);
   const [windows, setWindows] = useState<AvailabilityWindow[]>([]);
+  // Days she is fully available although a recurring rule normally blocks them.
+  const [availableAllDays, setAvailableAllDays] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -313,7 +315,11 @@ useEffect(() => {
         .neq("type", "vacation")
         .order("start_at");
       if (error) throw error;
-      const existing: AvailabilityWindow[] = (data ?? []).map((block) => {
+      setAvailableAllDays(new Set(
+        (data ?? []).filter((block) => block.type === "available_override")
+          .map((block) => block.start_at.slice(0, 10))
+      ));
+      const existing: AvailabilityWindow[] = (data ?? []).filter((block) => block.type !== "available_override").map((block) => {
         const startDate = new Date(block.start_at);
         const endDate = new Date(block.end_at);
         const start = `${String(startDate.getUTCHours()).padStart(2, "0")}:${String(startDate.getUTCMinutes()).padStart(2, "0")}`;
@@ -399,7 +405,20 @@ function formatShabbatClock(
   )} ${suffix}`;
 }
 
+  function setAvailableAllDay(date: string, on: boolean) {
+    setAvailableAllDays((current) => {
+      const next = new Set(current);
+      if (on) next.add(date); else next.delete(date);
+      return next;
+    });
+    // Fully available: no unavailable periods that day.
+    if (on) setWindows((current) => current.filter((window) => window.date !== date));
+    setErrorMessage("");
+  }
+
   function addWindow(date: string) {
+    // Entering times already replaces the recurring rule for that day.
+    setAvailableAllDay(date, false);
     setWindows((current) => [...current, { date, start: "09:00", end: "18:00", allDay: false }]);
     setErrorMessage("");
   }
@@ -413,6 +432,7 @@ function formatShabbatClock(
   }
 
   function setFullDay(date: string, checked: boolean) {
+    if (checked) setAvailableAllDay(date, false);
     setWindows((current) => checked
       ? [...current.filter((window) => window.date !== date), { date, start: "06:00", end: "03:00", allDay: true }]
       : current.filter((window) => !(window.date === date && window.allDay)));
@@ -454,7 +474,7 @@ function formatShabbatClock(
       // Saved through the database, which checks the person's code and keeps
       // vacation days (same replace/upsert behaviour as before).
       // Vacation days are already unavailable all day; don't save them twice.
-      const blocks = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
+      const blocks: Record<string, string>[] = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
         const start = w.allDay ? "06:00" : w.start;
         const end = w.allDay ? "03:00" : w.end;
         return {
@@ -462,6 +482,13 @@ function formatShabbatClock(
           end_at: dateTime(w.date, end, w.allDay || minutesOf(end) < FIRST_MINUTE),
         };
       });
+      // "Available all day" days: the recurring rule is removed for that day only.
+      for (const date of availableAllDays) {
+        if (!days.includes(date) || myVacationDays.has(date)) continue;
+        if (windows.some((w) => w.date === date)) continue;
+        if (!recurringRulesForDay(confirmedPerson.id, date).length) continue;
+        blocks.push({ type: "available_override", date });
+      }
       const { error: saveError } = await supabase.rpc("submit_availability", {
         p_person: confirmedPerson.id,
         p_pin: pin,
@@ -658,7 +685,7 @@ function formatShabbatClock(
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-white">{formatDay(date)}</h2>
-                <p className="mt-1 text-xs text-[#BDBDBD]">{myVacationDays.has(date) ? "Vacation · unavailable all day" : isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : dayRecurringRules.length ? "Standing recurring unavailability applies" : "Available all day unless you add a period"}</p>
+                <p className="mt-1 text-xs text-[#BDBDBD]">{myVacationDays.has(date) ? "Vacation · unavailable all day" : availableAllDays.has(date) && dayRecurringRules.length ? "Available all day · recurring rule removed" : isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : dayRecurringRules.length ? "Standing recurring unavailability applies" : "Available all day unless you add a period"}</p>
               </div>
               {!isFullDay && !myVacationDays.has(date) && <button type="button" onClick={() => addWindow(date)} className={outlineButton}>+ Add unavailable period</button>}
             </div>
@@ -678,11 +705,28 @@ function formatShabbatClock(
                     </p>
                   ))}
                 </div>
-                <p className="mt-2 text-xs leading-5 text-[#B9B9B9]">
-                  {hasWeeklyOverride
-                    ? "The unavailable period(s) entered below replace this standing rule for this scheduling day only."
-                    : "This standing rule applies automatically. Add a period below only if you need to replace it for this week."}
-                </p>
+                {availableAllDays.has(date) && !hasWeeklyOverride ? (
+                  <p className="mt-2 text-xs leading-5 text-[#9FE3B8]">
+                    Removed for this day: you are available the whole day. Your rule still applies on other weeks.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-[#B9B9B9]">
+                    {hasWeeklyOverride
+                      ? "The unavailable period(s) entered below replace this standing rule for this scheduling day only."
+                      : "This standing rule applies automatically. Add a period below only if you need to replace it for this week."}
+                  </p>
+                )}
+                {!myVacationDays.has(date) && !hasWeeklyOverride && (
+                  availableAllDays.has(date) ? (
+                    <button type="button" onClick={() => setAvailableAllDay(date, false)} className="mt-3 rounded-lg border border-[#5A5A5A] px-3 py-2 text-xs font-semibold text-white hover:border-[#F4C542]">
+                      Undo – keep my recurring rule
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setAvailableAllDay(date, true)} className="mt-3 rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20">
+                      I&apos;m available all day – remove this rule for this day
+                    </button>
+                  )
+                )}
               </div>
             )}
 
@@ -724,7 +768,7 @@ function formatShabbatClock(
               <input type="checkbox" className="h-4 w-4 accent-[#F4C542]" checked={isFullDay} onChange={(e) => setFullDay(date, e.target.checked)} />
               Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 3 AM)</span>
             </label>}
-            {!myVacationDays.has(date) && !isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? "No weekly override added. Your standing recurring rule remains active." : "No unavailable periods added. You're available for this scheduling day."}</p>}
+            {!myVacationDays.has(date) && !isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? (availableAllDays.has(date) ? "You're available for this whole scheduling day." : "No weekly override added. Your standing recurring rule remains active.") : "No unavailable periods added. You're available for this scheduling day."}</p>}
             {!myVacationDays.has(date) && !isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
               {dayWindows.map((w, i) => <div key={w.index} className="rounded-xl border border-[#434343] bg-[#202020] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
