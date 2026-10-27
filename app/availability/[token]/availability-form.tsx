@@ -453,7 +453,8 @@ function formatShabbatClock(
     try {
       // Saved through the database, which checks the person's code and keeps
       // vacation days (same replace/upsert behaviour as before).
-      const blocks = windows.map((w) => {
+      // Vacation days are already unavailable all day; don't save them twice.
+      const blocks = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
         const start = w.allDay ? "06:00" : w.start;
         const end = w.allDay ? "03:00" : w.end;
         return {
@@ -657,9 +658,9 @@ function formatShabbatClock(
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-white">{formatDay(date)}</h2>
-                <p className="mt-1 text-xs text-[#BDBDBD]">{isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : dayRecurringRules.length ? "Standing recurring unavailability applies" : "Available all day unless you add a period"}</p>
+                <p className="mt-1 text-xs text-[#BDBDBD]">{myVacationDays.has(date) ? "Vacation · unavailable all day" : isFullDay ? "Unavailable all day" : dayWindows.length ? `${dayWindows.length} unavailable ${dayWindows.length === 1 ? "period" : "periods"}` : dayRecurringRules.length ? "Standing recurring unavailability applies" : "Available all day unless you add a period"}</p>
               </div>
-              {!isFullDay && <button type="button" onClick={() => addWindow(date)} className={outlineButton}>+ Add unavailable period</button>}
+              {!isFullDay && !myVacationDays.has(date) && <button type="button" onClick={() => addWindow(date)} className={outlineButton}>+ Add unavailable period</button>}
             </div>
             {myVacationDays.has(date) && (
               <div className="mt-4 rounded-xl border border-[#6A592A] bg-[#2A2518] px-4 py-3">
@@ -718,12 +719,13 @@ function formatShabbatClock(
                 )}
               </div>
             )}
-            <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">
+            {/* Vacation days are already unavailable all day: no extra controls. */}
+            {!myVacationDays.has(date) && <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">
               <input type="checkbox" className="h-4 w-4 accent-[#F4C542]" checked={isFullDay} onChange={(e) => setFullDay(date, e.target.checked)} />
               Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 3 AM)</span>
-            </label>
-            {!isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? "No weekly override added. Your standing recurring rule remains active." : "No unavailable periods added. You're available for this scheduling day."}</p>}
-            {!isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
+            </label>}
+            {!myVacationDays.has(date) && !isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? "No weekly override added. Your standing recurring rule remains active." : "No unavailable periods added. You're available for this scheduling day."}</p>}
+            {!myVacationDays.has(date) && !isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
               {dayWindows.map((w, i) => <div key={w.index} className="rounded-xl border border-[#434343] bg-[#202020] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#F4C542]">Unavailable period {i + 1}</p>
