@@ -139,6 +139,8 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
   shabbatRules?: ShabbatAvailabilityRule[];
 }) {
   const [personId, setPersonId] = useState("");
+  // 4-digit personal code; checked by the database on every save.
+  const [pin, setPin] = useState("");
   const [confirmedPerson, setConfirmedPerson] = useState<Person | null>(null);
   const [windows, setWindows] = useState<AvailabilityWindow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -281,8 +283,27 @@ useEffect(() => {
     const person = people.find((p) => p.id === personId);
     if (!person) return;
     setErrorMessage("");
+    if (!/^\d{4}$/.test(pin)) {
+      setErrorMessage("Enter your 4-digit code.");
+      return;
+    }
     setLoadingExisting(true);
     try {
+      const { data: pinStatus, error: pinError } = await supabase
+        .rpc("check_person_pin", { p_person: person.id, p_pin: pin });
+      if (pinError) throw pinError;
+      if (pinStatus === "locked") {
+        setErrorMessage("Too many wrong codes. Please wait 15 minutes and try again.");
+        return;
+      }
+      if (pinStatus === "no_pin") {
+        setErrorMessage("You don't have a code yet. Please ask your manager for your 4-digit code.");
+        return;
+      }
+      if (pinStatus !== "ok") {
+        setErrorMessage("Wrong code. Please check your 4-digit code.");
+        return;
+      }
       const { data, error } = await supabase
         .from("availability_blocks")
         .select("start_at,end_at,type")
@@ -326,7 +347,7 @@ useEffect(() => {
       }
       setConfirmedPerson(person);
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : "Could not load your previous availability.");
+      setErrorMessage((e as { message?: string } | null)?.message || "Could not load your previous availability.");
     } finally {
       setLoadingExisting(false);
     }
@@ -430,46 +451,30 @@ function formatShabbatClock(
     setLoading(true);
     setErrorMessage("");
     try {
-      // Preserve the standalone project's existing replacement/upsert behavior.
-      const { error: deleteError } = await supabase
-        .from("availability_blocks").delete()
-        .eq("week_id", week.id).eq("person_id", confirmedPerson.id)
-        // Never remove vacation days requested in advance.
-        .neq("type", "vacation");
-      if (deleteError) throw deleteError;
-      if (windows.length) {
-        const rows = windows.map((w) => {
-          const start = w.allDay ? "06:00" : w.start;
-          const end = w.allDay ? "03:00" : w.end;
-          return {
-            week_id: week.id,
-            person_id: confirmedPerson.id,
-            start_at: dateTime(w.date, start, false),
-            end_at: dateTime(w.date, end, w.allDay || minutesOf(end) < FIRST_MINUTE),
-            type: "hard_unavailable",
-          };
-        });
-        const { error: insertError } = await supabase.from("availability_blocks").insert(rows);
-        if (insertError) throw insertError;
-      }
-      const now = new Date().toISOString();
-      const { error: submissionError } = await supabase.from("availability_submissions").upsert({
-        week_id: week.id,
-        person_id: confirmedPerson.id,
-        submitted_at: now,
-        updated_at: now,
-        notes: notes.trim() || null,
-        // A modified note must not leave old AI interpretations in place.
-        parsed_preferences: null,
-        preferences_parsed_at: null,
-      }, { onConflict: "week_id,person_id" });
-      if (submissionError) throw submissionError;
+      // Saved through the database, which checks the person's code and keeps
+      // vacation days (same replace/upsert behaviour as before).
+      const blocks = windows.map((w) => {
+        const start = w.allDay ? "06:00" : w.start;
+        const end = w.allDay ? "03:00" : w.end;
+        return {
+          start_at: dateTime(w.date, start, false),
+          end_at: dateTime(w.date, end, w.allDay || minutesOf(end) < FIRST_MINUTE),
+        };
+      });
+      const { error: saveError } = await supabase.rpc("submit_availability", {
+        p_person: confirmedPerson.id,
+        p_pin: pin,
+        p_week: week.id,
+        p_blocks: blocks,
+        p_notes: notes.trim() || null,
+      });
+      if (saveError) throw saveError;
       // The scheduler's generation flow can parse saved notes later.
       // We intentionally do not call a local AI endpoint here: the public
       // form and scheduler are separate Next.js applications.
       setSuccess(true);
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : "Could not submit availability.");
+      setErrorMessage((e as { message?: string } | null)?.message || "Could not submit availability.");
     } finally {
       setLoading(false);
     }
@@ -524,6 +529,7 @@ function formatShabbatClock(
       {showVacationCalendar && (
         <VacationCalendar
           personId={confirmedPerson.id}
+          pin={pin}
           requests={vacations.filter((r) => r.person_id === confirmedPerson.id)}
           othersOffByDay={othersOffByDay(vacations, confirmedPerson.id)}
           onClose={() => setShowVacationCalendar(false)}
@@ -576,8 +582,22 @@ function formatShabbatClock(
           <option value="">Select your name</option>
           {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
+        <label htmlFor="pin" className="mb-2 mt-5 block text-sm font-semibold text-white">Your 4-digit code</label>
+        <input
+          id="pin"
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          onKeyDown={(e) => { if (e.key === "Enter" && personId && pin.length === 4) confirmPerson(); }}
+          placeholder="••••"
+          className={`${selectClass} tracking-[0.5em]`}
+        />
+        <p className="mt-2 text-xs text-[#9A9A9A]">Your personal code keeps others from changing your availability. Ask your manager if you don&apos;t have it.</p>
         {errorMessage && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{errorMessage}</p>}
-        <button type="button" onClick={confirmPerson} disabled={!personId || loadingExisting} className={`${yellowButton} mt-6 w-full`}>{loadingExisting ? "Loading…" : "Continue →"}</button>
+        <button type="button" onClick={confirmPerson} disabled={!personId || pin.length !== 4 || loadingExisting} className={`${yellowButton} mt-6 w-full`}>{loadingExisting ? "Loading…" : "Continue →"}</button>
       </div>
     </main>;
   }
@@ -591,7 +611,7 @@ function formatShabbatClock(
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
           <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 3 AM (next day)</p>
-          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setWindows([]); setNotes(""); setErrorMessage(""); setCrowdedDays([]); setVacations([]); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
+          <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setPin(""); setWindows([]); setNotes(""); setErrorMessage(""); setCrowdedDays([]); setVacations([]); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
         </div>
         {group === "girls" && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#353535] bg-[#171717] px-4 py-3">

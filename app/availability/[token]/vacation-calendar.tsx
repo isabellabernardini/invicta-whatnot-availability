@@ -66,12 +66,15 @@ function toRanges(days: string[]) {
 
 export default function VacationCalendar({
   personId,
+  pin,
   requests,
   othersOffByDay,
   onClose,
   onSaved,
 }: {
   personId: string;
+  /** The girl's 4-digit code; checked by the database. */
+  pin: string;
   /** This girl's active vacation requests. */
   requests: VacationRequest[];
   /** Number of OTHER girls off on each day. */
@@ -114,18 +117,18 @@ export default function VacationCalendar({
     setSaving(true);
     setError("");
     try {
-      const rows = toRanges(selected).map((range) => ({
-        person_id: personId,
-        ...range,
-        note: note.trim() || null,
-      }));
-      const { error: insertError } = await supabase.from("vacation_requests").insert(rows);
+      const { error: insertError } = await supabase.rpc("request_vacation", {
+        p_person: personId,
+        p_pin: pin,
+        p_ranges: toRanges(selected),
+        p_note: note.trim() || null,
+      });
       if (insertError) throw insertError;
       setSelected([]);
       setNote("");
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save your vacation days.");
+      setError((e as { message?: string } | null)?.message || "Could not save your vacation days.");
     } finally {
       setSaving(false);
     }
@@ -133,11 +136,11 @@ export default function VacationCalendar({
 
   async function cancel(id: string) {
     setError("");
-    const { error: updateError } = await supabase
-      .from("vacation_requests")
-      .update({ cancelled_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("person_id", personId);
+    const { error: updateError } = await supabase.rpc("cancel_vacation", {
+      p_person: personId,
+      p_pin: pin,
+      p_request: id,
+    });
     if (updateError) setError(updateError.message);
     else onSaved();
   }
