@@ -49,7 +49,7 @@ type ShabbatTimes = {
 };
 
 const FIRST_MINUTE = 6 * 60;
-const LAST_MINUTE = 27 * 60; // 3 AM the following calendar day
+const LAST_MINUTE = 28 * 60; // 4 AM the following calendar day (some shows finish at 4 AM)
 const STEP = 30;
 
 function formatDay(date: string) {
@@ -237,7 +237,7 @@ useEffect(() => {
   }
 
   function recurringRuleLabel(rule: RecurringAvailabilityRule) {
-    if (rule.all_day) return "6:00 AM – 3:00 AM next day";
+    if (rule.all_day) return "6:00 AM – 4:00 AM next day";
     if (!rule.start_time || !rule.end_time) return "Standing unavailable period";
 
     const startHour = Number(rule.start_time.slice(0, 2));
@@ -326,7 +326,7 @@ useEffect(() => {
         const end = `${String(endDate.getUTCHours()).padStart(2, "0")}:${String(endDate.getUTCMinutes()).padStart(2, "0")}`;
         return {
           date: startDate.toISOString().slice(0, 10), start, end,
-          allDay: start === "06:00" && end === "03:00" &&
+          allDay: start === "06:00" && (end === "04:00" || end === "03:00") &&
             endDate.toISOString().slice(0, 10) === nextDate(startDate.toISOString().slice(0, 10)),
         };
       });
@@ -434,7 +434,7 @@ function formatShabbatClock(
   function setFullDay(date: string, checked: boolean) {
     if (checked) setAvailableAllDay(date, false);
     setWindows((current) => checked
-      ? [...current.filter((window) => window.date !== date), { date, start: "06:00", end: "03:00", allDay: true }]
+      ? [...current.filter((window) => window.date !== date), { date, start: "06:00", end: "04:00", allDay: true }]
       : current.filter((window) => !(window.date === date && window.allDay)));
   }
 
@@ -449,7 +449,7 @@ function formatShabbatClock(
         end: w.allDay ? LAST_MINUTE : operationalMinutes(w.end),
       }));
       if (spans.some((s) => s.start < FIRST_MINUTE || s.end > LAST_MINUTE || s.end <= s.start)) {
-        return `${formatDay(date)}: choose a valid period between 6 AM and 3 AM (next day), with the end after the start.`;
+        return `${formatDay(date)}: choose a valid period between 6 AM and 4 AM (next day), with the end after the start.`;
       }
       spans.sort((a, b) => a.start - b.start);
       for (let i = 1; i < spans.length; i++) {
@@ -476,7 +476,7 @@ function formatShabbatClock(
       // Vacation days are already unavailable all day; don't save them twice.
       const blocks: Record<string, string>[] = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
         const start = w.allDay ? "06:00" : w.start;
-        const end = w.allDay ? "03:00" : w.end;
+        const end = w.allDay ? "04:00" : w.end;
         return {
           start_at: dateTime(w.date, start, false),
           end_at: dateTime(w.date, end, w.allDay || minutesOf(end) < FIRST_MINUTE),
@@ -604,7 +604,7 @@ function formatShabbatClock(
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">Invicta Whatnot · Team portal</p>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">{groupLabel} Availability</h1>
         <p className="mt-3 text-sm leading-7 text-[#BDBDBD]">Select your name and tell us when you <strong className="text-white">cannot work</strong>. All other times will be considered available.</p>
-        <p className="mt-3 rounded-lg border border-[#3B3421] bg-[#252014] px-3 py-3 text-xs text-[#E8D6A2]">Scheduling day: 6 AM to 3 AM the following day.</p>
+        <p className="mt-3 rounded-lg border border-[#3B3421] bg-[#252014] px-3 py-3 text-xs text-[#E8D6A2]">Scheduling day: 6 AM to 4 AM the following day.</p>
         <label htmlFor="person" className="mb-2 mt-7 block text-sm font-semibold text-white">Your name</label>
         <select id="person" value={personId} onChange={(e) => setPersonId(e.target.value)} className={selectClass}>
           <option value="">Select your name</option>
@@ -638,7 +638,7 @@ function formatShabbatClock(
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Hi, {confirmedPerson.name}</h1>
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
-          <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 3 AM (next day)</p>
+          <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 4 AM (next day)</p>
           <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setPin(""); setWindows([]); setNotes(""); setErrorMessage(""); setCrowdedDays([]); setVacations([]); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
         </div>
         {group === "girls" && (
@@ -743,7 +743,7 @@ function formatShabbatClock(
                     {formatShabbatClock(
                       shabbatTimes!.candleLighting
                     )}
-                    ) until 3:00 AM next day
+                    ) until 4:00 AM next day
                     {shabbatRule?.mode ===
                     "friday_night_soft"
                       ? " (soft)"
@@ -766,7 +766,7 @@ function formatShabbatClock(
             {/* Vacation days are already unavailable all day: no extra controls. */}
             {!myVacationDays.has(date) && <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">
               <input type="checkbox" className="h-4 w-4 accent-[#F4C542]" checked={isFullDay} onChange={(e) => setFullDay(date, e.target.checked)} />
-              Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 3 AM)</span>
+              Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 4 AM)</span>
             </label>}
             {!myVacationDays.has(date) && !isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? (availableAllDays.has(date) ? "You're available for this whole scheduling day." : "No weekly override added. Your standing recurring rule remains active.") : "No unavailable periods added. You're available for this scheduling day."}</p>}
             {!myVacationDays.has(date) && !isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
