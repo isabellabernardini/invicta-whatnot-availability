@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import AvailabilityForm from "../availability-form";
+import WeekClosed, { weekHasStarted } from "../week-closed";
 
 export const instant = false;
 
@@ -29,6 +30,11 @@ export default async function BoysAvailabilityPage({
 
   if (error || !week) {
     notFound();
+  }
+
+  const { started, today } = await weekHasStarted(week.week_start);
+  if (started) {
+    return <WeekClosed weekStart={week.week_start} weekEnd={week.week_end} today={today} group="boys" />;
   }
 
   const [
