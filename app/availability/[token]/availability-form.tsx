@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { dayEndTime, EXTENDED_DAY_END } from "@/lib/day-window";
 import { supabase } from "@/lib/supabase";
 import VacationCalendar, {
   daysOf,
@@ -49,7 +50,13 @@ type ShabbatTimes = {
 };
 
 const FIRST_MINUTE = 6 * 60;
-const LAST_MINUTE = 28 * 60; // 4 AM the following calendar day (some shows finish at 4 AM)
+/** Last minute of the scheduling day starting on `date`: 4 AM next day, or 6 AM on the long
+    Black Friday days (Thu–Sun, Nov 26–29, 2026). */
+function lastMinute(date: string) {
+  const [h, m] = dayEndTime(date).split(":").map(Number);
+  return 1440 + h * 60 + m;
+}
+const dayEndLabel = (date: string) => (dayEndTime(date) === "06:00" ? "6 AM" : "4 AM");
 const STEP = 30;
 
 function formatDay(date: string) {
@@ -97,27 +104,34 @@ function operationalMinutes(time: string) {
   return minutes < FIRST_MINUTE ? minutes + 1440 : minutes;
 }
 
+/** An end time: "06:00" can only mean 6 AM the next morning (end of a long day). */
+function endMinutes(time: string) {
+  const minutes = minutesOf(time);
+  return minutes <= FIRST_MINUTE ? minutes + 1440 : minutes;
+}
+
 function timeValue(minutes: number) {
   const wrapped = minutes % 1440;
   return `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(wrapped % 60).padStart(2, "0")}`;
 }
 
-function timeLabel(time: string) {
+function timeLabel(time: string, isEnd = false) {
   const [h, m] = time.split(":").map(Number);
   const hour = h % 12 || 12;
-  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}${h < 6 ? " · next day" : ""}`;
+  const nextDay = h < 6 || (isEnd && h === 6 && m === 0);
+  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}${nextDay ? " · next day" : ""}`;
 }
 
-const ALL_OPTIONS = Array.from(
-  { length: Math.floor((LAST_MINUTE - FIRST_MINUTE) / STEP) + 1 },
-  (_, index) => timeValue(FIRST_MINUTE + index * STEP)
-);
-
-function timeOptions(current: string, isEnd: boolean) {
-  const base = ALL_OPTIONS.filter((_, index) => isEnd || index < ALL_OPTIONS.length - 1);
+function timeOptions(current: string, isEnd: boolean, date: string) {
+  const last = lastMinute(date);
+  const all = Array.from({ length: Math.floor((last - FIRST_MINUTE) / STEP) + 1 }, (_, index) => timeValue(FIRST_MINUTE + index * STEP));
+  // A start can't be the very end of the day, an end can't be the very start (on a 6 AM → 6 AM day
+  // both would read "6 AM").
+  const base = isEnd ? all.slice(1) : all.slice(0, -1);
+  const sortKey = isEnd ? endMinutes : operationalMinutes;
   // Preserve a previously saved off-grid time instead of silently changing it.
   if (!base.includes(current)) {
-    return [...base, current].sort((a, b) => operationalMinutes(a) - operationalMinutes(b));
+    return [...base, current].sort((a, b) => sortKey(a) - sortKey(b));
   }
   return base;
 }
@@ -158,6 +172,10 @@ export default function AvailabilityForm({ week, people, group, recurringRules =
   const [showVacationCalendar, setShowVacationCalendar] = useState(false);
   const [crowdedDays, setCrowdedDays] = useState<{ date: string; count: number }[]>([]);
   const days = useMemo(() => dateRange(week.week_start, week.week_end), [week.week_start, week.week_end]);
+  // Long scheduling days this week (6 AM → 6 AM), e.g. Black Friday Thu–Sun.
+  const longDays = days
+    .filter((d) => EXTENDED_DAY_END[d])
+    .map((d) => new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`)));
 
   const friday = useMemo(
   () =>
@@ -326,7 +344,7 @@ useEffect(() => {
         const end = `${String(endDate.getUTCHours()).padStart(2, "0")}:${String(endDate.getUTCMinutes()).padStart(2, "0")}`;
         return {
           date: startDate.toISOString().slice(0, 10), start, end,
-          allDay: start === "06:00" && (end === "04:00" || end === "03:00") &&
+          allDay: start === "06:00" && (end === "04:00" || end === "03:00" || end === dayEndTime(startDate.toISOString().slice(0, 10))) &&
             endDate.toISOString().slice(0, 10) === nextDate(startDate.toISOString().slice(0, 10)),
         };
       });
@@ -434,7 +452,7 @@ function formatShabbatClock(
   function setFullDay(date: string, checked: boolean) {
     if (checked) setAvailableAllDay(date, false);
     setWindows((current) => checked
-      ? [...current.filter((window) => window.date !== date), { date, start: "06:00", end: "04:00", allDay: true }]
+      ? [...current.filter((window) => window.date !== date), { date, start: "06:00", end: dayEndTime(date), allDay: true }]
       : current.filter((window) => !(window.date === date && window.allDay)));
   }
 
@@ -446,10 +464,10 @@ function formatShabbatClock(
       }
       const spans = dayWindows.map((w) => ({
         start: w.allDay ? FIRST_MINUTE : operationalMinutes(w.start),
-        end: w.allDay ? LAST_MINUTE : operationalMinutes(w.end),
+        end: w.allDay ? lastMinute(date) : endMinutes(w.end),
       }));
-      if (spans.some((s) => s.start < FIRST_MINUTE || s.end > LAST_MINUTE || s.end <= s.start)) {
-        return `${formatDay(date)}: choose a valid period between 6 AM and 4 AM (next day), with the end after the start.`;
+      if (spans.some((s) => s.start < FIRST_MINUTE || s.end > lastMinute(date) || s.end <= s.start)) {
+        return `${formatDay(date)}: choose a valid period between 6 AM and ${dayEndLabel(date)} (next day), with the end after the start.`;
       }
       spans.sort((a, b) => a.start - b.start);
       for (let i = 1; i < spans.length; i++) {
@@ -476,10 +494,10 @@ function formatShabbatClock(
       // Vacation days are already unavailable all day; don't save them twice.
       const blocks: Record<string, string>[] = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
         const start = w.allDay ? "06:00" : w.start;
-        const end = w.allDay ? "04:00" : w.end;
+        const end = w.allDay ? dayEndTime(w.date) : w.end;
         return {
           start_at: dateTime(w.date, start, false),
-          end_at: dateTime(w.date, end, w.allDay || minutesOf(end) < FIRST_MINUTE),
+          end_at: dateTime(w.date, end, w.allDay || minutesOf(end) <= FIRST_MINUTE),
         };
       });
       // "Available all day" days: the recurring rule is removed for that day only.
@@ -604,7 +622,7 @@ function formatShabbatClock(
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">Invicta Whatnot · Team portal</p>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">{groupLabel} Availability</h1>
         <p className="mt-3 text-sm leading-7 text-[#BDBDBD]">Select your name and tell us when you <strong className="text-white">cannot work</strong>. All other times will be considered available.</p>
-        <p className="mt-3 rounded-lg border border-[#3B3421] bg-[#252014] px-3 py-3 text-xs text-[#E8D6A2]">Scheduling day: 6 AM to 4 AM the following day.</p>
+        <p className="mt-3 rounded-lg border border-[#3B3421] bg-[#252014] px-3 py-3 text-xs text-[#E8D6A2]">Scheduling day: 6 AM to 4 AM the following day.{longDays.length > 0 && <> <strong>This week {longDays.join(", ")} run 6 AM to 6 AM the following day.</strong></>}</p>
         <label htmlFor="person" className="mb-2 mt-7 block text-sm font-semibold text-white">Your name</label>
         <select id="person" value={personId} onChange={(e) => setPersonId(e.target.value)} className={selectClass}>
           <option value="">Select your name</option>
@@ -638,7 +656,7 @@ function formatShabbatClock(
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Hi, {confirmedPerson.name}</h1>
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
-          <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 4 AM (next day)</p>
+          <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 4 AM (next day){longDays.length > 0 && <> · <strong>{longDays.join(", ")}: 6 AM – 6 AM (next day)</strong></>}</p>
           <button type="button" onClick={() => { setConfirmedPerson(null); setPersonId(""); setPin(""); setWindows([]); setNotes(""); setErrorMessage(""); setCrowdedDays([]); setVacations([]); }} className="text-xs font-semibold text-[#F4C542] hover:underline">← Change name</button>
         </div>
         {group === "girls" && (
@@ -766,7 +784,7 @@ function formatShabbatClock(
             {/* Vacation days are already unavailable all day: no extra controls. */}
             {!myVacationDays.has(date) && <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[#414141] bg-[#222222] p-3 text-sm text-white">
               <input type="checkbox" className="h-4 w-4 accent-[#F4C542]" checked={isFullDay} onChange={(e) => setFullDay(date, e.target.checked)} />
-              Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – 4 AM)</span>
+              Unavailable the entire day <span className="text-xs text-[#B9B9B9]">(6 AM – {dayEndLabel(date)})</span>
             </label>}
             {!myVacationDays.has(date) && !isFullDay && dayWindows.length === 0 && <p className="mt-4 rounded-xl border border-dashed border-[#393939] bg-[#1D1D1D] px-4 py-4 text-sm text-[#B4B4B4]">{dayRecurringRules.length ? (availableAllDays.has(date) ? "You're available for this whole scheduling day." : "No weekly override added. Your standing recurring rule remains active.") : "No unavailable periods added. You're available for this scheduling day."}</p>}
             {!myVacationDays.has(date) && !isFullDay && dayWindows.length > 0 && <div className="mt-4 space-y-3">
@@ -778,16 +796,16 @@ function formatShabbatClock(
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div><label htmlFor={`from-${w.index}`} className="mb-1.5 block text-xs font-semibold text-[#DADADA]">From</label>
                     <select id={`from-${w.index}`} className={selectClass} value={w.start} onChange={(e) => updateWindow(w.index, { start: e.target.value })}>
-                      {timeOptions(w.start, false).map((time) => <option key={time} value={time}>{timeLabel(time)}</option>)}
+                      {timeOptions(w.start, false, date).map((time) => <option key={time} value={time}>{timeLabel(time)}</option>)}
                     </select>
                   </div>
                   <div><label htmlFor={`until-${w.index}`} className="mb-1.5 block text-xs font-semibold text-[#DADADA]">Until</label>
                     <select id={`until-${w.index}`} className={selectClass} value={w.end} onChange={(e) => updateWindow(w.index, { end: e.target.value })}>
-                      {timeOptions(w.end, true).map((time) => <option key={time} value={time}>{timeLabel(time)}</option>)}
+                      {timeOptions(w.end, true, date).map((time) => <option key={time} value={time}>{timeLabel(time, true)}</option>)}
                     </select>
                   </div>
                 </div>
-                {operationalMinutes(w.end) <= operationalMinutes(w.start) && <p className="mt-3 text-xs text-[#FFB3B3]">End time must be after start time.</p>}
+                {endMinutes(w.end) <= operationalMinutes(w.start) && <p className="mt-3 text-xs text-[#FFB3B3]">End time must be after start time.</p>}
               </div>)}
             </div>}
           </section>;
