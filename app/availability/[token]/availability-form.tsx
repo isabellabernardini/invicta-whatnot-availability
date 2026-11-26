@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { dayEndTime, EXTENDED_DAY_END } from "@/lib/day-window";
+import { blockToWindow, windowToBlock } from "@/lib/form-time";
 import { supabase } from "@/lib/supabase";
 import VacationCalendar, {
   daysOf,
@@ -88,11 +89,6 @@ function dateRange(start: string, end: string) {
   return result;
 }
 
-function nextDate(date: string) {
-  const d = new Date(`${date}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
 
 function minutesOf(time: string) {
   const [h, m] = time.split(":").map(Number);
@@ -136,15 +132,7 @@ function timeOptions(current: string, isEnd: boolean, date: string) {
   return base;
 }
 
-function previousDate(date: string) {
-  const d = new Date(`${date}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 
-function dateTime(date: string, time: string, followingDay: boolean) {
-  return `${followingDay ? nextDate(date) : date}T${time}:00Z`;
-}
 
 const card = "rounded-2xl border border-[#353535] bg-[#171717] shadow-[0_12px_36px_rgba(0,0,0,0.22)]";
 const selectClass = "w-full min-w-0 rounded-xl border border-[#494949] bg-[#252525] px-3 py-3 text-sm text-white outline-none transition focus:border-[#F4C542] focus:ring-2 focus:ring-[#F4C542]/20";
@@ -344,17 +332,7 @@ useEffect(() => {
           .map((block) => block.start_at.slice(0, 10))
       ));
       const existing: AvailabilityWindow[] = (data ?? []).filter((block) => block.type !== "available_override").map((block) => {
-        const startDate = new Date(block.start_at);
-        const endDate = new Date(block.end_at);
-        const start = `${String(startDate.getUTCHours()).padStart(2, "0")}:${String(startDate.getUTCMinutes()).padStart(2, "0")}`;
-        const end = `${String(endDate.getUTCHours()).padStart(2, "0")}:${String(endDate.getUTCMinutes()).padStart(2, "0")}`;
-        // A period starting after midnight belongs to the scheduling day before.
-        const date = startDate.getUTCHours() < 6 ? previousDate(startDate.toISOString().slice(0, 10)) : startDate.toISOString().slice(0, 10);
-        return {
-          date, start, end,
-          allDay: start === "06:00" && (end === "04:00" || end === "03:00" || end === dayEndTime(startDate.toISOString().slice(0, 10))) &&
-            endDate.toISOString().slice(0, 10) === nextDate(startDate.toISOString().slice(0, 10)),
-        };
+        return blockToWindow(block);
       });
       // Restore existing notes so edits never silently erase preferences.
       const { data: submission, error: preferencesError } = await supabase
@@ -500,15 +478,8 @@ function formatShabbatClock(
       // Saved through the database, which checks the person's code and keeps
       // vacation days (same replace/upsert behaviour as before).
       // Vacation days are already unavailable all day; don't save them twice.
-      const blocks: Record<string, string>[] = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => {
-        const start = w.allDay ? "06:00" : w.start;
-        const end = w.allDay ? dayEndTime(w.date) : w.end;
-        return {
-          // A start after midnight (e.g. "2 AM · next day") is on the following calendar day.
-          start_at: dateTime(w.date, start, minutesOf(start) < FIRST_MINUTE),
-          end_at: dateTime(w.date, end, w.allDay || minutesOf(end) <= FIRST_MINUTE),
-        };
-      });
+      // Tested conversion (lib/form-time.ts): a time before 6 AM is on the next calendar day.
+      const blocks: Record<string, string>[] = windows.filter((w) => !myVacationDays.has(w.date)).map((w) => windowToBlock(w));
       // "Available all day" days: the recurring rule is removed for that day only.
       for (const date of availableAllDays) {
         if (!days.includes(date) || myVacationDays.has(date)) continue;
