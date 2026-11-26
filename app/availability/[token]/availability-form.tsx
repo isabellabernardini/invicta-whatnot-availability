@@ -136,6 +136,12 @@ function timeOptions(current: string, isEnd: boolean, date: string) {
   return base;
 }
 
+function previousDate(date: string) {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function dateTime(date: string, time: string, followingDay: boolean) {
   return `${followingDay ? nextDate(date) : date}T${time}:00Z`;
 }
@@ -342,8 +348,10 @@ useEffect(() => {
         const endDate = new Date(block.end_at);
         const start = `${String(startDate.getUTCHours()).padStart(2, "0")}:${String(startDate.getUTCMinutes()).padStart(2, "0")}`;
         const end = `${String(endDate.getUTCHours()).padStart(2, "0")}:${String(endDate.getUTCMinutes()).padStart(2, "0")}`;
+        // A period starting after midnight belongs to the scheduling day before.
+        const date = startDate.getUTCHours() < 6 ? previousDate(startDate.toISOString().slice(0, 10)) : startDate.toISOString().slice(0, 10);
         return {
-          date: startDate.toISOString().slice(0, 10), start, end,
+          date, start, end,
           allDay: start === "06:00" && (end === "04:00" || end === "03:00" || end === dayEndTime(startDate.toISOString().slice(0, 10))) &&
             endDate.toISOString().slice(0, 10) === nextDate(startDate.toISOString().slice(0, 10)),
         };
@@ -496,7 +504,8 @@ function formatShabbatClock(
         const start = w.allDay ? "06:00" : w.start;
         const end = w.allDay ? dayEndTime(w.date) : w.end;
         return {
-          start_at: dateTime(w.date, start, false),
+          // A start after midnight (e.g. "2 AM · next day") is on the following calendar day.
+          start_at: dateTime(w.date, start, minutesOf(start) < FIRST_MINUTE),
           end_at: dateTime(w.date, end, w.allDay || minutesOf(end) <= FIRST_MINUTE),
         };
       });
