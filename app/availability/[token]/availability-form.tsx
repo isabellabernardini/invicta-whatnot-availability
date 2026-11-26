@@ -264,16 +264,13 @@ useEffect(() => {
 
   const peopleIds = useMemo(() => new Set(people.map((p) => p.id)), [people]);
 
-  async function loadVacations(): Promise<VacationRequest[]> {
-    if (group !== "girls") return [];
+  async function loadVacations(personIdForPin = confirmedPerson?.id, pinForPin = pin): Promise<VacationRequest[]> {
+    if (group !== "girls" || !personIdForPin) return [];
     const today = new Date().toISOString().slice(0, 10);
     const from = today < week.week_start ? today : week.week_start;
+    // PIN-checked: own requests come back with notes, other girls' only with dates.
     const { data, error } = await supabase
-      .from("vacation_requests")
-      .select("id,person_id,start_date,end_date,note")
-      .is("cancelled_at", null)
-      .gte("end_date", from)
-      .order("start_date");
+      .rpc("group_vacations", { p_person: personIdForPin, p_pin: pinForPin, p_from: from });
     if (error) throw error;
     const rows = ((data ?? []) as VacationRequest[]).filter((r) => peopleIds.has(r.person_id));
     setVacations(rows);
@@ -318,15 +315,16 @@ useEffect(() => {
         setErrorMessage("Wrong code. Please check your 4-digit code.");
         return;
       }
-      const { data, error } = await supabase
-        .from("availability_blocks")
-        .select("start_at,end_at,type")
-        .eq("week_id", week.id)
-        .eq("person_id", person.id)
-        // Vacation days are managed by the vacation calendar, not this form.
-        .neq("type", "vacation")
-        .order("start_at");
+      // PIN-checked read of this person's saved blocks and notes for the week.
+      const { data: mine, error } = await supabase
+        .rpc("my_availability", { p_person: person.id, p_pin: pin, p_week: week.id });
       if (error) throw error;
+      const saved = (mine ?? { blocks: [], notes: null }) as {
+        blocks: { start_at: string; end_at: string; type: string }[];
+        notes: string | null;
+      };
+      // Vacation days are managed by the vacation calendar, not this form (excluded in the function).
+      const data = saved.blocks;
       setAvailableAllDays(new Set(
         (data ?? []).filter((block) => block.type === "available_override")
           .map((block) => block.start_at.slice(0, 10))
@@ -335,18 +333,12 @@ useEffect(() => {
         return blockToWindow(block);
       });
       // Restore existing notes so edits never silently erase preferences.
-      const { data: submission, error: preferencesError } = await supabase
-        .from("availability_submissions")
-        .select("notes")
-        .eq("week_id", week.id)
-        .eq("person_id", person.id)
-        .maybeSingle();
-      if (preferencesError) throw preferencesError;
+      const submission = { notes: saved.notes };
       setNotes(submission?.notes ?? "");
       setWindows(existing);
       // Girls: ask for help on days when 3+ other girls are on vacation.
       if (group === "girls") {
-        const rows = await loadVacations();
+        const rows = await loadVacations(person.id, pin);
         const mine = new Set(rows.filter((r) => r.person_id === person.id).flatMap(daysOf));
         const others = othersOffByDay(rows, person.id);
         setCrowdedDays(

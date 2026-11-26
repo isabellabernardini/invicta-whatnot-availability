@@ -1,5 +1,4 @@
 import { connection } from "next/server";
-import { supabase } from "@/lib/supabase";
 
 /*
  * A week's availability form closes when that week starts (Monday, Miami
@@ -15,15 +14,14 @@ export async function weekHasStarted(weekStart: string) {
 const fmt = (date: string) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 
-export default async function WeekClosed({ weekStart, weekEnd, today, group }: { weekStart: string; weekEnd: string; today: string; group: "girls" | "boys" }) {
-  const { data: next } = await supabase
-    .from("schedule_weeks")
-    .select("week_start, week_end, availability_token")
-    .gt("week_start", today)
-    .not("availability_token", "is", null)
-    .order("week_start")
-    .limit(1)
-    .maybeSingle();
+export default function WeekClosed({ weekStart, weekEnd, group, next }: {
+  weekStart: string;
+  weekEnd: string;
+  today: string;
+  group: "girls" | "boys";
+  /** The next open week, from availability_page (only returned for a valid token). */
+  next: { week_start: string; week_end: string; availability_token: string } | null;
+}) {
   return (
     <main className="mx-auto max-w-xl px-6 py-16 text-center">
       <p className="text-xs uppercase tracking-[0.2em] text-[#8F897C]">Invicta Whatnot · Team Portal</p>
