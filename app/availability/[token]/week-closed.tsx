@@ -5,9 +5,11 @@ import { connection } from "next/server";
  * time): the schedule is already made. Shows a link to the next open week.
  * The database refuses late submissions too (submit_availability).
  */
-export async function weekHasStarted(weekStart: string) {
+export async function weekHasStarted(weekStart: string, openUntil?: string | null) {
   await connection();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  // Extra weeks (e.g. Extra Black Friday) stay open until a set moment instead of closing when they start.
+  if (openUntil) return { started: Date.now() >= Date.parse(openUntil), today };
   return { started: today >= weekStart, today };
 }
 

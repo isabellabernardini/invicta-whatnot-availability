@@ -22,7 +22,7 @@ export default async function BoysAvailabilityPage({
   }
   const { week } = data;
 
-  const { started, today } = await weekHasStarted(week.week_start);
+  const { started, today } = await weekHasStarted(week.week_start, week.availability_open_until);
   if (started) {
     return <WeekClosed weekStart={week.week_start} weekEnd={week.week_end} today={today} group="boys" next={data.next_week} />;
   }

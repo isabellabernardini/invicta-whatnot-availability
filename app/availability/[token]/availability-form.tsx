@@ -11,7 +11,7 @@ import VacationCalendar, {
 } from "./vacation-calendar";
 
 type Group = "girls" | "boys";
-type Week = { id: string; week_start: string; week_end: string };
+type Week = { id: string; week_start: string; week_end: string; label?: string | null; availability_open_until?: string | null };
 type Person = { id: string; name: string };
 type AvailabilityWindow = {
   date: string;
@@ -593,6 +593,11 @@ function formatShabbatClock(
       <div className={`${card} w-full max-w-lg p-7 sm:p-10`}>
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">Invicta Whatnot · Team portal</p>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">{groupLabel} Availability</h1>
+        {week.label && (
+          <p className="mt-2 rounded-lg border border-[#F4C542]/40 bg-[#F4C542]/10 px-3 py-2 text-sm font-semibold text-[#F4C542]">
+            {week.label}: extra shows from Friday 12 PM to Monday 6 AM (Miami time). Each day runs 6 AM to 6 AM the following day.
+          </p>
+        )}
         <p className="mt-3 text-sm leading-7 text-[#BDBDBD]">Select your name and tell us when you <strong className="text-white">cannot work</strong>. All other times will be considered available.</p>
         <p className="mt-3 rounded-lg border border-[#3B3421] bg-[#252014] px-3 py-3 text-xs text-[#E8D6A2]">Scheduling day: 6 AM to 4 AM the following day.{longDays.length > 0 && <> <strong>This week {longDays.join(", ")} run 6 AM to 6 AM the following day.</strong></>}</p>
         <label htmlFor="person" className="mb-2 mt-7 block text-sm font-semibold text-white">Your name</label>
@@ -626,6 +631,11 @@ function formatShabbatClock(
       <header className="mb-7">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F4C542]">Invicta Whatnot · {groupLabel} team</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Hi, {confirmedPerson.name}</h1>
+        {week.label && (
+          <p className="mt-2 text-sm font-semibold text-[#F4C542]">
+            {week.label}: extra shows Friday 12 PM → Monday 6 AM. Friday morning before 12 PM doesn&apos;t matter.
+          </p>
+        )}
         <p className="mt-3 text-sm leading-6 text-[#C5C5C5]">Mark only the times you <strong className="text-white">cannot work</strong>. You may add several periods on the same day; time between those periods stays available.</p>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#494029] bg-[#282318] px-4 py-3">
           <p className="text-sm text-[#F3DC9F]"><strong>Daily schedule:</strong> 6 AM – 4 AM (next day){longDays.length > 0 && <> · <strong>{longDays.join(", ")}: 6 AM – 6 AM (next day)</strong></>}</p>
